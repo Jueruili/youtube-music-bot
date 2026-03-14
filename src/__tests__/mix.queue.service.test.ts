@@ -67,6 +67,14 @@ function restoreMethods(): void {
   }
 }
 
+function expectMixTrack(track: Track, expectedTrack: Track): void {
+  expect(track).toEqual({
+    ...expectedTrack,
+    queueOrigin: "mix",
+    radioGenerated: false,
+  });
+}
+
 describe("QueueService mix creation", () => {
   beforeEach(() => {
     restoreMethods();
@@ -125,10 +133,12 @@ describe("QueueService mix creation", () => {
     expect(playCalls).toBe(1);
     expect(getMixTracksCalls).toBe(1);
     expect(tracks).toEqual([baseTrack, ...mixTracks]);
-    expect(state.currentTrack).toEqual(baseTrack);
+    expectMixTrack(state.currentTrack!, baseTrack);
     expect(state.duration).toBe(baseTrack.duration);
-    expect(state.queue).toEqual(mixTracks);
-    expect(queueService.getQueue()).toEqual(mixTracks);
+    state.queue.forEach((track, index) => expectMixTrack(track, mixTracks[index]!));
+    queueService.getQueue().forEach((track, index) =>
+      expectMixTrack(track, mixTracks[index]!),
+    );
   });
 
   test("should start playing the base track before mix suggestions finish loading", async () => {
@@ -166,7 +176,7 @@ describe("QueueService mix creation", () => {
     await mixFetchStarted;
 
     expect(playCalls).toBe(1);
-    expect(queueService.getState().currentTrack).toEqual(baseTrack);
+    expectMixTrack(queueService.getState().currentTrack!, baseTrack);
     expect(queueService.getQueue()).toEqual([]);
 
     if (!resolveMixTracks) {
@@ -177,7 +187,9 @@ describe("QueueService mix creation", () => {
 
     const tracks = await pendingMix;
     expect(tracks).toEqual([baseTrack, ...mixTracks]);
-    expect(queueService.getQueue()).toEqual(mixTracks);
+    queueService.getQueue().forEach((track, index) =>
+      expectMixTrack(track, mixTracks[index]!),
+    );
   });
 
   test("should fall back to the base track when fetching mix tracks fails", async () => {
@@ -206,7 +218,7 @@ describe("QueueService mix creation", () => {
 
     expect(playCalls).toBe(1);
     expect(tracks).toEqual([baseTrack]);
-    expect(state.currentTrack).toEqual(baseTrack);
+    expectMixTrack(state.currentTrack!, baseTrack);
     expect(state.queue).toEqual([]);
   });
 
@@ -255,8 +267,10 @@ describe("QueueService mix creation", () => {
 
     expect(playCalls).toBe(1);
     expect(tracks).toEqual([baseTrack, ...mixTracks]);
-    expect(queueService.getState().currentTrack).toEqual(baseTrack);
-    expect(queueService.getQueue()).toEqual(mixTracks);
+    expectMixTrack(queueService.getState().currentTrack!, baseTrack);
+    queueService.getQueue().forEach((track, index) =>
+      expectMixTrack(track, mixTracks[index]!),
+    );
   });
 
   test("should fall back to direct stream playback when player.play fails", async () => {
@@ -283,7 +297,7 @@ describe("QueueService mix creation", () => {
 
     expect(playUrlCalls).toBe(1);
     expect(tracks).toEqual([baseTrack, ...mixTracks]);
-    expect(queueService.getState().currentTrack).toEqual(baseTrack);
+    expectMixTrack(queueService.getState().currentTrack!, baseTrack);
   });
 
   test("should reset current playback state when both playback strategies fail", async () => {

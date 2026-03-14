@@ -4,8 +4,13 @@ import { api } from "@/services/api";
 import { debounce, throttle } from "@/utils/format";
 import { useEffect, useMemo, useState } from "react";
 import { Volume2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export const VolumeControl = () => {
+interface VolumeControlProps {
+  className?: string;
+}
+
+export const VolumeControl = ({ className }: VolumeControlProps) => {
   const volume = usePlayerStore((state) => state.playbackState.volume);
   const [displayVolume, setDisplayVolume] = useState(volume);
   const [isAdjusting, setIsAdjusting] = useState(false);
@@ -44,7 +49,12 @@ export const VolumeControl = () => {
   };
 
   return (
-    <div className="flex w-full min-w-[280px] max-w-[360px] items-center gap-4 rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-5 py-3">
+    <div
+      className={cn(
+        "flex h-[60px] w-full min-w-[280px] max-w-[360px] items-center gap-4 rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-5",
+        className,
+      )}
+    >
       <Volume2 className="h-5 w-5 shrink-0 text-[var(--text-secondary)]" />
       <Slider
         className="flex-1"
@@ -53,7 +63,7 @@ export const VolumeControl = () => {
         step={1}
         onValueChange={onSliderChange}
       />
-      <span className="w-10 text-right text-sm font-semibold text-[var(--text-secondary)]">
+      <span className="w-10 shrink-0 text-right text-sm font-semibold tabular-nums text-[var(--text-secondary)]">
         {displayVolume}
       </span>
     </div>

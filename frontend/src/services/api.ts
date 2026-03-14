@@ -1,4 +1,5 @@
 import type { ApiResponse, Track } from "@/types";
+import type { SyncSessionResponse } from "@/types/library";
 
 const API_BASE = "/api";
 
@@ -17,9 +18,20 @@ class ApiService {
       });
 
       if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+
+        try {
+          const errorPayload = (await response.json()) as ApiResponse;
+          if (errorPayload.error) {
+            errorMessage = errorPayload.error;
+          }
+        } catch {
+          // 保持預設 HTTP 錯誤訊息
+        }
+
         return {
           success: false,
-          error: `HTTP ${response.status}: ${response.statusText}`,
+          error: errorMessage,
         };
       }
 
@@ -47,11 +59,25 @@ class ApiService {
   }
 
   // 創建 Mix 混合播放清單
-  async createMix(track: Track): Promise<ApiResponse<{ count: number }>> {
-    return this.request<{ count: number }>("/mix", {
+  async createMix(
+    track: Track,
+  ): Promise<ApiResponse<{ count: number; tracks: Track[] }>> {
+    return this.request<{ count: number; tracks: Track[] }>("/mix", {
       method: "POST",
       body: JSON.stringify({ track }),
     });
+  }
+
+  async enableRadio(): Promise<ApiResponse<void>> {
+    return this.request<void>("/radio/enable", { method: "POST" });
+  }
+
+  async disableRadio(): Promise<ApiResponse<void>> {
+    return this.request<void>("/radio/disable", { method: "POST" });
+  }
+
+  async toggleRadio(): Promise<ApiResponse<void>> {
+    return this.request<void>("/radio/toggle", { method: "POST" });
   }
 
   // 播放
@@ -99,6 +125,76 @@ class ApiService {
       method: "POST",
       body: JSON.stringify({ fromIndex, toIndex }),
     });
+  }
+
+  async playPlaylist(
+    playlistId: string,
+    tracks: Track[],
+  ): Promise<ApiResponse<void>> {
+    return this.request<void>(`/library/playlists/${playlistId}/play`, {
+      method: "POST",
+      body: JSON.stringify({ tracks }),
+    });
+  }
+
+  async queuePlaylist(
+    playlistId: string,
+    tracks: Track[],
+  ): Promise<ApiResponse<void>> {
+    return this.request<void>(`/library/playlists/${playlistId}/queue`, {
+      method: "POST",
+      body: JSON.stringify({ tracks }),
+    });
+  }
+
+  async createSyncSession(payload: {
+    sessionId?: string | null;
+    profileId: string;
+    device: {
+      id: string;
+      name: string;
+      kind: "desktop" | "mobile";
+    };
+  }): Promise<ApiResponse<SyncSessionResponse>> {
+    return this.request<SyncSessionResponse>("/sync/session", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async pairSyncSession(payload: {
+    pairCode: string;
+    profileId: string;
+    device: {
+      id: string;
+      name: string;
+      kind: "desktop" | "mobile";
+    };
+  }): Promise<ApiResponse<SyncSessionResponse>> {
+    return this.request<SyncSessionResponse>("/sync/pair", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getSyncDevices(
+    sessionId: string,
+  ): Promise<ApiResponse<{ devices: SyncSessionResponse["devices"] }>> {
+    return this.request<{ devices: SyncSessionResponse["devices"] }>(
+      `/sync/devices?sessionId=${encodeURIComponent(sessionId)}`,
+    );
+  }
+
+  async removeSyncDevice(
+    sessionId: string,
+    deviceId: string,
+  ): Promise<ApiResponse<void>> {
+    return this.request<void>(
+      `/sync/devices/${encodeURIComponent(deviceId)}?sessionId=${encodeURIComponent(sessionId)}`,
+      {
+        method: "DELETE",
+      },
+    );
   }
 
   // 取得當前狀態

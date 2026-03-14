@@ -4,8 +4,10 @@ import { Empty } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/toast";
 import { usePlayerStore } from "@/stores/playerStore";
+import { useLibraryStore } from "@/stores/libraryStore";
 import { api } from "@/services/api";
 import { cn } from "@/lib/utils";
+import { reorderItems } from "@/utils/reorder";
 
 interface QueueContentProps {
   className?: string;
@@ -24,14 +26,8 @@ export const QueueContent = ({ className }: QueueContentProps) => {
   const updatePlaybackState = usePlayerStore(
     (state) => state.updatePlaybackState,
   );
+  const openPlaylistPicker = useLibraryStore((state) => state.openPlaylistPicker);
   const { showToast } = useToast();
-
-  const moveTrack = (tracks: typeof queue, fromIndex: number, toIndex: number) => {
-    const reordered = [...tracks];
-    const [movedTrack] = reordered.splice(fromIndex, 1);
-    reordered.splice(toIndex, 0, movedTrack);
-    return reordered;
-  };
 
   const handleRemove = async (index: number) => {
     setRemovingIndex(index);
@@ -57,7 +53,7 @@ export const QueueContent = ({ className }: QueueContentProps) => {
     }
 
     const previousQueue = [...queue];
-    const reorderedQueue = moveTrack(previousQueue, fromIndex, toIndex);
+    const reorderedQueue = reorderItems(previousQueue, fromIndex, toIndex);
 
     updatePlaybackState({ queue: reorderedQueue });
     setDraggingIndex(null);
@@ -94,6 +90,7 @@ export const QueueContent = ({ className }: QueueContentProps) => {
         onRemove={handleRemove}
         onReorder={handleReorder}
         removingIndex={removingIndex}
+        onAddToPlaylist={openPlaylistPicker}
         draggingIndex={draggingIndex}
         dropTarget={dropTarget}
         onDragStart={setDraggingIndex}

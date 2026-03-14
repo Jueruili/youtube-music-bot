@@ -26,15 +26,10 @@ const Dialog = ({
 // Dialog Trigger
 interface DialogTriggerProps {
   children: React.ReactNode;
-  asChild?: boolean;
 }
 
-const DialogTrigger = ({ children, asChild }: DialogTriggerProps) => {
-  return (
-    <BaseDialog.Trigger {...({ asChild } as any)}>
-      {children}
-    </BaseDialog.Trigger>
-  );
+const DialogTrigger = ({ children }: DialogTriggerProps) => {
+  return <BaseDialog.Trigger>{children}</BaseDialog.Trigger>;
 };
 
 // Dialog Backdrop
@@ -144,18 +139,15 @@ DialogDescription.displayName = "DialogDescription";
 interface DialogCloseProps {
   className?: string;
   children?: React.ReactNode;
-  asChild?: boolean;
 }
 
 const DialogClose = React.forwardRef<HTMLButtonElement, DialogCloseProps>(
-  ({ className, children, asChild }, ref) => {
+  ({ className, children }, ref) => {
     return (
       <BaseDialog.Close
         ref={ref}
-        {...({ asChild } as any)}
         className={cn(
-          !asChild &&
-            "absolute right-4 top-4 rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] p-2 text-[var(--text-secondary)] opacity-90 transition-all hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] disabled:pointer-events-none",
+          "absolute right-4 top-4 rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] p-2 text-[var(--text-secondary)] opacity-90 transition-all hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] disabled:pointer-events-none",
           className,
         )}
       >

@@ -10,6 +10,7 @@ type DropTarget = {
 interface QueueListProps {
   queue: Track[];
   onRemove: (index: number) => void;
+  onAddToPlaylist: (track: Track) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   removingIndex: number | null;
   draggingIndex: number | null;
@@ -22,6 +23,7 @@ interface QueueListProps {
 export const QueueList = ({
   queue,
   onRemove,
+  onAddToPlaylist,
   onReorder,
   removingIndex,
   draggingIndex,
@@ -71,6 +73,7 @@ export const QueueList = ({
           track={track}
           index={index}
           onRemove={onRemove}
+          onAddToPlaylist={onAddToPlaylist}
           isRemoving={removingIndex === index}
           isNext={index === 0}
           isDragging={draggingIndex === index}

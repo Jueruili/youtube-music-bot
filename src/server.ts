@@ -8,6 +8,15 @@ import {
   handleWebSocketClose,
   initializeWebSocket,
 } from "./websocket/handler.ts";
+import {
+  handleSyncWebSocketClose,
+  handleSyncWebSocketMessage,
+  handleSyncWebSocketOpen,
+} from "./websocket/sync-handler.ts";
+
+type SocketData = {
+  channel: "playback" | "sync";
+};
 
 const app = new Hono();
 
@@ -36,13 +45,24 @@ export function createServer() {
   // 初始化 WebSocket 廣播
   initializeWebSocket();
 
-  return Bun.serve({
+  return Bun.serve<SocketData>({
     port: 3000,
     fetch(req, server) {
       // WebSocket 升級
       const url = new URL(req.url);
       if (url.pathname === "/ws") {
-        const success = server.upgrade(req);
+        const success = server.upgrade(req, {
+          data: { channel: "playback" } satisfies SocketData,
+        });
+        return success
+          ? undefined
+          : new Response("WebSocket upgrade failed", { status: 500 });
+      }
+
+      if (url.pathname === "/ws/sync") {
+        const success = server.upgrade(req, {
+          data: { channel: "sync" } satisfies SocketData,
+        });
         return success
           ? undefined
           : new Response("WebSocket upgrade failed", { status: 500 });
@@ -53,12 +73,27 @@ export function createServer() {
     },
     websocket: {
       open(ws) {
+        if (ws.data?.channel === "sync") {
+          handleSyncWebSocketOpen(ws);
+          return;
+        }
+
         handleWebSocketOpen(ws);
       },
       message(ws, message) {
+        if (ws.data?.channel === "sync") {
+          handleSyncWebSocketMessage(ws, message.toString());
+          return;
+        }
+
         handleWebSocketMessage(ws, message.toString());
       },
       close(ws) {
+        if (ws.data?.channel === "sync") {
+          handleSyncWebSocketClose(ws);
+          return;
+        }
+
         handleWebSocketClose(ws);
       },
     },

@@ -3,13 +3,14 @@ import { Avatar } from "@/components/ui/avatar";
 import { formatTime } from "@/utils/format";
 import type { Track } from "@/types";
 import { cn } from "@/lib/utils";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Library } from "lucide-react";
 import type { DragEvent } from "react";
 
 interface QueueItemProps {
   track: Track;
   index: number;
   onRemove: (index: number) => void;
+  onAddToPlaylist: (track: Track) => void;
   isRemoving?: boolean;
   isNext?: boolean;
   isDragging?: boolean;
@@ -24,6 +25,7 @@ export const QueueItem = ({
   track,
   index,
   onRemove,
+  onAddToPlaylist,
   isRemoving,
   isNext = false,
   isDragging = false,
@@ -91,6 +93,15 @@ export const QueueItem = ({
             {track.artist} • {formatTime(track.duration)}
           </p>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onAddToPlaylist(track)}
+          title="加入歌單"
+          className="opacity-40 transition-opacity group-hover:opacity-100"
+        >
+          <Library className="h-4 w-4" />
+        </Button>
         <Button
           variant="ghost"
           size="sm"

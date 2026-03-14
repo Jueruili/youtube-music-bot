@@ -5,6 +5,7 @@ import { Empty } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast";
 import { usePlayerStore } from "@/stores/playerStore";
+import { useLibraryStore } from "@/stores/libraryStore";
 import { api } from "@/services/api";
 import type { Track } from "@/types";
 
@@ -15,6 +16,8 @@ export const SearchSection = () => {
 
   const searchResults = usePlayerStore((state) => state.searchResults);
   const setSearchResults = usePlayerStore((state) => state.setSearchResults);
+  const openPlaylistPicker = useLibraryStore((state) => state.openPlaylistPicker);
+  const saveMix = useLibraryStore((state) => state.saveMix);
   const { showToast } = useToast();
 
   const handleSearch = async (query: string) => {
@@ -57,6 +60,7 @@ export const SearchSection = () => {
     try {
       const response = await api.createMix(track);
       if (response.success && response.data) {
+        void saveMix(track, response.data.tracks);
         showToast({
           message: `已創建 Mix，加入 ${response.data.count} 首歌曲`,
           type: "success",
@@ -96,6 +100,7 @@ export const SearchSection = () => {
               result={result}
               onAdd={handleAddToQueue}
               onCreateMix={handleCreateMix}
+              onAddToPlaylist={openPlaylistPicker}
               isAdding={addingId === result.videoId}
               isCreatingMix={creatingMixId === result.videoId}
             />

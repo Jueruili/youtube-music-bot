@@ -1,11 +1,15 @@
 import { ConnectionStatus } from "./ConnectionStatus";
 import { Github, Music2, Search } from "lucide-react";
+import { useAppUiStore } from "@/stores/appUiStore";
 
 interface HeaderProps {
   onSearchClick?: () => void;
 }
 
 export const Header = ({ onSearchClick }: HeaderProps) => {
+  const desktopMode = useAppUiStore((state) => state.desktopMode);
+  const setDesktopMode = useAppUiStore((state) => state.setDesktopMode);
+
   return (
     <header className="border-b border-[color:var(--surface-border)] bg-[color:var(--surface-subtle)]/90 px-4 py-3 backdrop-blur-xl lg:px-6 lg:py-4">
       <div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4">
@@ -23,6 +27,31 @@ export const Header = ({ onSearchClick }: HeaderProps) => {
               Desktop jukebox with synced lyrics and live queue
             </p>
           </div>
+        </div>
+
+        <div className="hidden lg:flex items-center rounded-[24px] border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] p-1">
+          <button
+            type="button"
+            onClick={() => setDesktopMode("player")}
+            className={`rounded-[18px] px-4 py-2.5 text-sm font-semibold transition-colors ${
+              desktopMode === "player"
+                ? "bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-[0_12px_24px_-20px_var(--accent-glow)]"
+                : "text-[var(--text-secondary)]"
+            }`}
+          >
+            播放中
+          </button>
+          <button
+            type="button"
+            onClick={() => setDesktopMode("library")}
+            className={`rounded-[18px] px-4 py-2.5 text-sm font-semibold transition-colors ${
+              desktopMode === "library"
+                ? "bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-[0_12px_24px_-20px_var(--accent-glow)]"
+                : "text-[var(--text-secondary)]"
+            }`}
+          >
+            媒體庫
+          </button>
         </div>
 
         <div className="flex items-center gap-2 lg:flex-1 lg:justify-end lg:gap-4">

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { ApiResponse, Track } from "../types/index.ts";
 import { getMusicService } from "../services/music.service.ts";
 import { getQueueService } from "../services/queue.service.ts";
+import { getSyncService } from "../services/sync.service.ts";
 import {
   getArtworkProxyHeaders,
   isAllowedArtworkUrl,
@@ -9,6 +10,12 @@ import {
 } from "../utils/artwork-proxy.ts";
 
 const api = new Hono();
+
+type SyncDeviceRequest = {
+  id: string;
+  name: string;
+  kind: "desktop" | "mobile";
+};
 
 /**
  * GET /api/artwork-proxy?url={imageUrl}
@@ -180,6 +187,7 @@ api.post("/mix", async (c) => {
       data: {
         message: `Added ${tracks.length} tracks to queue`,
         count: tracks.length,
+        tracks,
       },
     });
   } catch (error) {
@@ -187,6 +195,203 @@ api.post("/mix", async (c) => {
     return c.json<ApiResponse>(
       { success: false, error: "Failed to create mix" },
       500,
+    );
+  }
+});
+
+/**
+ * POST /api/radio/enable
+ * 開啟無限播放電臺模式
+ */
+api.post("/radio/enable", (c) => {
+  try {
+    const queueService = getQueueService();
+    queueService.enableRadio();
+
+    return c.json<ApiResponse>({
+      success: true,
+      data: { message: "Radio enabled" },
+    });
+  } catch (error) {
+    console.error("Failed to enable radio:", error);
+    return c.json<ApiResponse>(
+      { success: false, error: "Failed to enable radio" },
+      500,
+    );
+  }
+});
+
+/**
+ * POST /api/radio/disable
+ * 關閉無限播放電臺模式
+ */
+api.post("/radio/disable", (c) => {
+  try {
+    const queueService = getQueueService();
+    queueService.disableRadio();
+
+    return c.json<ApiResponse>({
+      success: true,
+      data: { message: "Radio disabled" },
+    });
+  } catch (error) {
+    console.error("Failed to disable radio:", error);
+    return c.json<ApiResponse>(
+      { success: false, error: "Failed to disable radio" },
+      500,
+    );
+  }
+});
+
+/**
+ * POST /api/radio/toggle
+ * 切換無限播放電臺模式
+ */
+api.post("/radio/toggle", (c) => {
+  try {
+    const queueService = getQueueService();
+    queueService.toggleRadio();
+
+    return c.json<ApiResponse>({
+      success: true,
+      data: { message: "Radio toggled" },
+    });
+  } catch (error) {
+    console.error("Failed to toggle radio:", error);
+    return c.json<ApiResponse>(
+      { success: false, error: "Failed to toggle radio" },
+      500,
+    );
+  }
+});
+
+/**
+ * POST /api/sync/session
+ * 建立或恢復同步 session
+ */
+api.post("/sync/session", async (c) => {
+  try {
+    const body = await c.req.json<{
+      sessionId?: string | null;
+      profileId: string;
+      device: SyncDeviceRequest;
+    }>();
+
+    if (!body.profileId || !body.device?.id || !body.device?.name) {
+      return c.json<ApiResponse>(
+        { success: false, error: "profileId and device are required" },
+        400,
+      );
+    }
+
+    const syncService = getSyncService();
+    const session = syncService.createOrResumeSession(body);
+
+    return c.json<ApiResponse>({
+      success: true,
+      data: session,
+    });
+  } catch (error) {
+    console.error("Failed to create sync session:", error);
+    return c.json<ApiResponse>(
+      { success: false, error: "Failed to create sync session" },
+      500,
+    );
+  }
+});
+
+/**
+ * POST /api/sync/pair
+ * 透過 pair code 加入現有 session
+ */
+api.post("/sync/pair", async (c) => {
+  try {
+    const body = await c.req.json<{
+      pairCode: string;
+      profileId: string;
+      device: SyncDeviceRequest;
+    }>();
+
+    if (!body.pairCode || !body.profileId || !body.device?.id || !body.device?.name) {
+      return c.json<ApiResponse>(
+        { success: false, error: "pairCode, profileId and device are required" },
+        400,
+      );
+    }
+
+    const syncService = getSyncService();
+    const session = syncService.pairToSession(body);
+
+    return c.json<ApiResponse>({
+      success: true,
+      data: session,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to pair sync session";
+    const status = message === "Invalid pair code" ? 404 : 500;
+    console.error("Failed to pair sync session:", error);
+    return c.json<ApiResponse>(
+      { success: false, error: message },
+      status,
+    );
+  }
+});
+
+/**
+ * GET /api/sync/devices?sessionId={sessionId}
+ * 取得同步裝置列表
+ */
+api.get("/sync/devices", (c) => {
+  const sessionId = c.req.query("sessionId");
+
+  if (!sessionId) {
+    return c.json<ApiResponse>(
+      { success: false, error: "sessionId is required" },
+      400,
+    );
+  }
+
+  try {
+    const devices = getSyncService().getDevices(sessionId);
+    return c.json<ApiResponse>({
+      success: true,
+      data: { devices },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load devices";
+    return c.json<ApiResponse>(
+      { success: false, error: message },
+      message === "Sync session not found" ? 404 : 500,
+    );
+  }
+});
+
+/**
+ * DELETE /api/sync/devices/:deviceId?sessionId={sessionId}
+ * 移除同步裝置
+ */
+api.delete("/sync/devices/:deviceId", (c) => {
+  const sessionId = c.req.query("sessionId");
+  const deviceId = c.req.param("deviceId");
+
+  if (!sessionId || !deviceId) {
+    return c.json<ApiResponse>(
+      { success: false, error: "sessionId and deviceId are required" },
+      400,
+    );
+  }
+
+  try {
+    getSyncService().removeDevice(sessionId, deviceId);
+    return c.json<ApiResponse>({
+      success: true,
+      data: { message: "Device removed" },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to remove device";
+    return c.json<ApiResponse>(
+      { success: false, error: message },
+      message === "Sync session not found" ? 404 : 500,
     );
   }
 });
@@ -248,6 +453,68 @@ api.post("/queue/reorder", async (c) => {
         success: false,
         error: "Failed to reorder queue",
       },
+      500,
+    );
+  }
+});
+
+/**
+ * POST /api/library/playlists/:playlistId/play
+ * 立即播放本地歌單內容
+ */
+api.post("/library/playlists/:playlistId/play", async (c) => {
+  try {
+    const body = await c.req.json<{ tracks: Track[] }>();
+
+    if (!Array.isArray(body.tracks) || body.tracks.length === 0) {
+      return c.json<ApiResponse>(
+        { success: false, error: "tracks is required" },
+        400,
+      );
+    }
+
+    const queueService = getQueueService();
+    await queueService.replaceQueueWithTracks(body.tracks, "playlist");
+
+    return c.json<ApiResponse>({
+      success: true,
+      data: { message: "Playlist playback started" },
+    });
+  } catch (error) {
+    console.error("Failed to play playlist:", error);
+    return c.json<ApiResponse>(
+      { success: false, error: "Failed to play playlist" },
+      500,
+    );
+  }
+});
+
+/**
+ * POST /api/library/playlists/:playlistId/queue
+ * 將本地歌單內容加入目前播放佇列
+ */
+api.post("/library/playlists/:playlistId/queue", async (c) => {
+  try {
+    const body = await c.req.json<{ tracks: Track[] }>();
+
+    if (!Array.isArray(body.tracks) || body.tracks.length === 0) {
+      return c.json<ApiResponse>(
+        { success: false, error: "tracks is required" },
+        400,
+      );
+    }
+
+    const queueService = getQueueService();
+    await queueService.appendTracksToQueue(body.tracks, "playlist");
+
+    return c.json<ApiResponse>({
+      success: true,
+      data: { message: "Playlist added to queue" },
+    });
+  } catch (error) {
+    console.error("Failed to queue playlist:", error);
+    return c.json<ApiResponse>(
+      { success: false, error: "Failed to queue playlist" },
       500,
     );
   }

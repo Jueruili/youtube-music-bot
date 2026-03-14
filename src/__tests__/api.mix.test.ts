@@ -92,6 +92,15 @@ describe("/api/mix", () => {
       data: {
         message: "Added 2 tracks to queue",
         count: 2,
+        tracks: [
+          baseTrack,
+          {
+            videoId: "mix-1",
+            title: "Mix Song 1",
+            artist: "Artist 1",
+            duration: 200,
+          },
+        ],
       },
     });
   });

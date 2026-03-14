@@ -1,3 +1,5 @@
+export type QueueOrigin = "manual" | "mix" | "radio" | "playlist";
+
 // 歌曲資訊
 export interface Track {
   videoId: string;
@@ -5,6 +7,8 @@ export interface Track {
   artist: string;
   duration: number; // 秒
   thumbnail?: string;
+  queueOrigin?: QueueOrigin;
+  radioGenerated?: boolean;
 }
 
 // 歌詞行
@@ -21,6 +25,8 @@ export interface PlaybackState {
   duration: number; // 總時長（秒）
   volume: number; // 0-100
   queue: Track[];
+  radioEnabled: boolean;
+  lastPlayedTrack: Track | null;
 }
 
 // WebSocket 訊息類型

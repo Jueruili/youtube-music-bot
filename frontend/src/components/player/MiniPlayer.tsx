@@ -2,7 +2,9 @@ import { useState } from "react";
 import { AnimatedAvatar } from "@/components/ui/animated-avatar";
 import { Button } from "@/components/ui/button";
 import { usePlayerStore } from "@/stores/playerStore";
+import { useAppUiStore } from "@/stores/appUiStore";
 import { api } from "@/services/api";
+import { RadioToggleButton } from "./RadioToggleButton";
 
 export const MiniPlayer = () => {
   const currentTrack = usePlayerStore(
@@ -11,6 +13,9 @@ export const MiniPlayer = () => {
   const isPlaying = usePlayerStore((state) => state.playbackState.isPlaying);
   const position = usePlayerStore((state) => state.playbackState.position);
   const duration = usePlayerStore((state) => state.playbackState.duration);
+  const setMobileNowPlayingOpen = useAppUiStore(
+    (state) => state.setMobileNowPlayingOpen,
+  );
   const [isLoading, setIsLoading] = useState(false);
 
   const handlePlayPause = async (e: React.MouseEvent) => {
@@ -46,12 +51,17 @@ export const MiniPlayer = () => {
 
   return (
     <div
-      className={`fixed bottom-[84px] left-0 right-0 z-50 lg:hidden bg-white dark:bg-gray-950 border-t border-gray-200 dark:border-gray-700/50 transition-colors`}
+      className="fixed bottom-[84px] left-0 right-0 z-50 border-t border-[color:var(--surface-border)] bg-[var(--surface-elevated)]/95 transition-colors lg:hidden"
+      onClick={() => {
+        if (currentTrack) {
+          setMobileNowPlayingOpen(true);
+        }
+      }}
     >
       {/* 進度條 */}
-      <div className="h-1 bg-gray-200 dark:bg-gray-700">
+      <div className="h-1 bg-[var(--surface-border)]">
         <div
-          className="h-full bg-blue-500 transition-all duration-300"
+          className="h-full bg-[var(--accent)] transition-all duration-300"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -69,13 +79,15 @@ export const MiniPlayer = () => {
 
             {/* 歌曲信息 */}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-50 truncate">
+              <p className="truncate text-sm font-medium text-[var(--text-primary)]">
                 {currentTrack.title}
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-300 truncate">
+              <p className="truncate text-xs text-[var(--text-secondary)]">
                 {currentTrack.artist}
               </p>
             </div>
+
+            <RadioToggleButton indicatorOnly className="hidden sm:inline-flex" />
 
             {/* 播放控制 */}
             <div className="flex items-center gap-1">
@@ -126,9 +138,9 @@ export const MiniPlayer = () => {
           <>
             {/* 無歌曲時的預設狀態 */}
             <div className="flex items-center gap-3 flex-1">
-              <div className="w-10 h-10 rounded-md bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[var(--surface-muted)]">
                 <svg
-                  className="h-6 w-6 text-gray-400"
+                  className="h-6 w-6 text-[var(--text-muted)]"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                 >
@@ -136,10 +148,10 @@ export const MiniPlayer = () => {
                 </svg>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                <p className="text-sm font-medium text-[var(--text-secondary)]">
                   尚無播放歌曲
                 </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">
+                <p className="text-xs text-[var(--text-muted)]">
                   搜尋並加入歌曲開始播放
                 </p>
               </div>

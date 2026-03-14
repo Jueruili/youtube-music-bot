@@ -1,6 +1,7 @@
-import type { Track, PlaybackState } from "../types/index.ts";
+import type { QueueOrigin, Track, PlaybackState } from "../types/index.ts";
 import { getPlayerService } from "./player.service.ts";
 import { getMusicService } from "./music.service.ts";
+import { pushRecentTrackId, selectRadioCandidates } from "./radio.helpers.ts";
 import { log } from "../utils/logger.ts";
 
 type QueueChangeCallback = (queue: Track[]) => void;
@@ -10,11 +11,16 @@ type LyricsChangeCallback = (lyrics: any[]) => void;
 class QueueService {
   private static instance: QueueService | undefined;
   private mixRequestId = 0;
+  private radioRequestId = 0;
   private queue: Track[] = [];
   private currentTrack: Track | null = null;
+  private lastPlayedTrack: Track | null = null;
   private currentPosition = 0;
   private currentDuration = 0;
   private isPaused = false;
+  private radioEnabled = false;
+  private recentRadioTrackIds: string[] = [];
+  private radioFillPromise: Promise<void> | null = null;
   private lastEofTimestamp = 0; // 記錄 EOF 時間，用於抑制假 pause 事件
   private queueChangeCallbacks: QueueChangeCallback[] = [];
   private stateChangeCallbacks: PlaybackStateCallback[] = [];
@@ -113,6 +119,8 @@ class QueueService {
       duration: this.currentDuration,
       volume: getPlayerService().getVolume(),
       queue: [...this.queue],
+      radioEnabled: this.radioEnabled,
+      lastPlayedTrack: this.lastPlayedTrack,
     };
 
     for (const callback of this.stateChangeCallbacks) {
@@ -124,8 +132,7 @@ class QueueService {
    * 加入歌曲到播放清單
    */
   async addToQueue(track: Track): Promise<void> {
-    // 直接使用前端傳來的 Track，不再重新搜尋
-    this.queue.push(track);
+    this.insertManualTracks([track]);
 
     log.info("Added to queue", {
       videoId: track.videoId,
@@ -149,7 +156,10 @@ class QueueService {
     if (shouldAutoPlay) {
       log.info("Auto-starting playback for newly added track");
       this.playNext();
+      return;
     }
+
+    this.maybeHydrateRadioQueue();
   }
 
   /**
@@ -173,7 +183,7 @@ class QueueService {
     this.broadcastState();
 
     // 先加入基礎歌曲
-    this.queue.push(baseTrack);
+    this.queue.push(this.withOrigin(baseTrack, "mix"));
 
     log.info("Mix created, starting playback", {
       addedTracks: this.queue.length,
@@ -199,7 +209,7 @@ class QueueService {
       }
 
       if (mixTracks.length > 0) {
-        this.queue.push(...mixTracks);
+        this.queue.push(...mixTracks.map((track) => this.withOrigin(track, "mix")));
         this.broadcastQueueChange();
 
         // 若 base song 已結束且播放器空閒，補上的 mix 要能自動接續播放。
@@ -223,6 +233,7 @@ class QueueService {
       log.info("Removed from queue", { videoId: removed[0]?.videoId });
       this.broadcastQueueChange();
       this.broadcastState();
+      this.maybeHydrateRadioQueue();
     }
   }
 
@@ -252,6 +263,7 @@ class QueueService {
 
     this.broadcastQueueChange();
     this.broadcastState();
+    this.maybeHydrateRadioQueue();
   }
 
   /**
@@ -265,7 +277,20 @@ class QueueService {
     });
 
     if (this.queue.length === 0) {
+      const filled = await this.ensureRadioTracks({
+        immediatePlayback: true,
+        seedTrack: this.currentTrack ?? this.lastPlayedTrack,
+      });
+
+      if (filled && this.queue.length > 0) {
+        return this.playNext();
+      }
+
       log.info("Queue is empty, stopping playback");
+      if (this.currentTrack) {
+        this.lastPlayedTrack = this.currentTrack;
+        this.rememberRecentlyPlayed(this.currentTrack.videoId);
+      }
       this.currentTrack = null;
       this.currentPosition = 0;
       this.currentDuration = 0;
@@ -276,6 +301,10 @@ class QueueService {
     }
 
     // 從佇列取出下一首
+    if (this.currentTrack) {
+      this.lastPlayedTrack = this.currentTrack;
+      this.rememberRecentlyPlayed(this.currentTrack.videoId);
+    }
     const nextTrack = this.queue.shift()!;
     this.currentTrack = nextTrack;
     this.currentPosition = 0;
@@ -287,6 +316,7 @@ class QueueService {
     // 廣播變更
     this.broadcastQueueChange();
     this.broadcastState();
+    this.maybeHydrateRadioQueue();
 
     // 獲取並廣播歌詞
     this.fetchAndBroadcastLyrics();
@@ -398,6 +428,34 @@ class QueueService {
     this.playNext();
   }
 
+  enableRadio(): void {
+    if (this.radioEnabled) {
+      return;
+    }
+
+    this.radioEnabled = true;
+    this.broadcastState();
+    this.maybeHydrateRadioQueue({ force: true });
+  }
+
+  disableRadio(): void {
+    if (!this.radioEnabled) {
+      return;
+    }
+
+    this.radioEnabled = false;
+    this.broadcastState();
+  }
+
+  toggleRadio(): void {
+    if (this.radioEnabled) {
+      this.disableRadio();
+      return;
+    }
+
+    this.enableRadio();
+  }
+
   /**
    * 設定音量
    */
@@ -448,7 +506,55 @@ class QueueService {
       duration: this.currentDuration,
       volume: getPlayerService().getVolume(),
       queue: [...this.queue],
+      radioEnabled: this.radioEnabled,
+      lastPlayedTrack: this.lastPlayedTrack,
     };
+  }
+
+  async replaceQueueWithTracks(
+    tracks: Track[],
+    origin: QueueOrigin = "playlist",
+  ): Promise<void> {
+    await getPlayerService().stop();
+
+    this.queue = tracks.map((track) => this.withOrigin(track, origin));
+    this.currentTrack = null;
+    this.currentPosition = 0;
+    this.currentDuration = 0;
+    this.isPaused = false;
+
+    this.broadcastQueueChange();
+    this.broadcastState();
+
+    if (this.queue.length > 0) {
+      await this.playNext();
+    }
+  }
+
+  async appendTracksToQueue(
+    tracks: Track[],
+    origin: QueueOrigin = "playlist",
+  ): Promise<void> {
+    if (tracks.length === 0) {
+      return;
+    }
+
+    this.insertManualTracks(
+      tracks.map((track) => this.withOrigin(track, origin)),
+      origin === "manual" || origin === "playlist",
+    );
+    this.broadcastQueueChange();
+    this.broadcastState();
+
+    const playerIsPlaying = getPlayerService().isCurrentlyPlaying();
+    const shouldAutoPlay = this.currentTrack === null && !playerIsPlaying;
+
+    if (shouldAutoPlay) {
+      await this.playNext();
+      return;
+    }
+
+    this.maybeHydrateRadioQueue();
   }
 
   /**
@@ -487,15 +593,145 @@ class QueueService {
 
   resetForTests(): void {
     this.mixRequestId = 0;
+    this.radioRequestId = 0;
     this.queue = [];
     this.currentTrack = null;
+    this.lastPlayedTrack = null;
     this.currentPosition = 0;
     this.currentDuration = 0;
     this.isPaused = false;
+    this.radioEnabled = false;
+    this.recentRadioTrackIds = [];
+    this.radioFillPromise = null;
     this.lastEofTimestamp = 0;
     this.queueChangeCallbacks = [];
     this.stateChangeCallbacks = [];
     this.lyricsChangeCallbacks = [];
+  }
+
+  private withOrigin(track: Track, origin: QueueOrigin): Track {
+    return {
+      ...track,
+      queueOrigin: origin,
+      radioGenerated: origin === "radio",
+    };
+  }
+
+  private insertManualTracks(
+    tracks: Track[],
+    prioritizeAheadOfRadio: boolean = true,
+  ): void {
+    const normalizedTracks = tracks.map((track) =>
+      this.withOrigin(track, track.queueOrigin ?? "manual"),
+    );
+
+    if (!prioritizeAheadOfRadio) {
+      this.queue.push(...normalizedTracks);
+      return;
+    }
+
+    const firstRadioIndex = this.queue.findIndex((track) => track.radioGenerated);
+
+    if (firstRadioIndex === -1) {
+      this.queue.push(...normalizedTracks);
+      return;
+    }
+
+    this.queue.splice(firstRadioIndex, 0, ...normalizedTracks);
+  }
+
+  private maybeHydrateRadioQueue(options: { force?: boolean } = {}): void {
+    if (!this.radioEnabled) {
+      return;
+    }
+
+    const lowWatermark = 3;
+    if (!options.force && this.queue.length > lowWatermark) {
+      return;
+    }
+
+    void this.ensureRadioTracks({
+      immediatePlayback: false,
+      seedTrack: this.currentTrack ?? this.lastPlayedTrack,
+    });
+  }
+
+  private async ensureRadioTracks(options: {
+    immediatePlayback: boolean;
+    seedTrack: Track | null;
+  }): Promise<boolean> {
+    if (!this.radioEnabled) {
+      return false;
+    }
+
+    if (this.radioFillPromise) {
+      await this.radioFillPromise;
+      return this.queue.length > 0;
+    }
+
+    const seedTrack = options.seedTrack;
+    if (!seedTrack?.videoId) {
+      return false;
+    }
+
+    const existingTrackIds = new Set(
+      [this.currentTrack, this.lastPlayedTrack, ...this.queue]
+        .filter((track): track is Track => Boolean(track))
+        .map((track) => track.videoId),
+    );
+
+    const requestId = ++this.radioRequestId;
+    this.radioFillPromise = (async () => {
+      try {
+        const mixTracks = await getMusicService().getMixTracks(seedTrack.videoId, 8);
+
+        if (requestId !== this.radioRequestId || !this.radioEnabled) {
+          return;
+        }
+
+        const nextTracks = selectRadioCandidates(
+          mixTracks,
+          existingTrackIds,
+          this.recentRadioTrackIds,
+          5,
+        ).map((track) => this.withOrigin(track, "radio"));
+
+        if (nextTracks.length === 0) {
+          return;
+        }
+
+        this.queue.push(...nextTracks);
+        this.broadcastQueueChange();
+        this.broadcastState();
+
+        if (
+          options.immediatePlayback &&
+          this.currentTrack === null &&
+          !getPlayerService().isCurrentlyPlaying() &&
+          this.queue.length > 0
+        ) {
+          await this.playNext();
+        }
+      } catch (error) {
+        log.warn("Failed to hydrate radio queue", {
+          error: error instanceof Error ? error.message : String(error),
+          seedTrack: seedTrack.title,
+        });
+      } finally {
+        this.radioFillPromise = null;
+      }
+    })();
+
+    await this.radioFillPromise;
+    return this.queue.length > 0;
+  }
+
+  private rememberRecentlyPlayed(videoId: string): void {
+    this.recentRadioTrackIds = pushRecentTrackId(
+      this.recentRadioTrackIds,
+      videoId,
+      20,
+    );
   }
 }
 

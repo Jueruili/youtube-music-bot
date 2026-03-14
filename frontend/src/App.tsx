@@ -1,13 +1,19 @@
 import { useState, useCallback } from "react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useLibraryPlaybackSync } from "@/hooks/useLibraryPlaybackSync";
+import { useLibrarySync } from "@/hooks/useLibrarySync";
 import { useArtworkTheme } from "@/hooks/useArtworkTheme";
 import { usePlayerStore } from "@/stores/playerStore";
+import { useAppUiStore } from "@/stores/appUiStore";
 import { cn } from "@/lib/utils";
 import { MainLayout } from "@/components/layout/MainLayout";
+import { LibraryView } from "@/components/library/LibraryView";
+import { PlaylistPickerDialog } from "@/components/library/PlaylistPickerDialog";
 import { SearchModal } from "@/components/search/SearchModal";
 import { PlayerSection } from "@/components/player/PlayerSection";
 import { MiniPlayer } from "@/components/player/MiniPlayer";
+import { MobileNowPlayingSheet } from "@/components/mobile/MobileNowPlayingSheet";
 import { TabBar } from "@/components/mobile/TabBar";
 import { QueueSection } from "@/components/queue/QueueSection";
 import { LyricsDisplay } from "@/components/lyrics/LyricsDisplay";
@@ -25,6 +31,7 @@ import {
 function App() {
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [desktopActiveTab, setDesktopActiveTab] = useState("lyrics");
+  const desktopMode = useAppUiStore((state) => state.desktopMode);
   const mobileActiveTab = usePlayerStore((state) => state.mobileActiveTab);
   const currentTrack = usePlayerStore((state) => state.playbackState.currentTrack);
   const queue = usePlayerStore((state) => state.playbackState.queue);
@@ -33,6 +40,8 @@ function App() {
 
   // 初始化 WebSocket 連接
   useWebSocket();
+  useLibraryPlaybackSync();
+  useLibrarySync();
 
   // 穩定的函數引用，避免不必要的事件監聽器重新綁定
   // 只用於桌面版搜尋彈窗
@@ -52,11 +61,21 @@ function App() {
         <div
           className={cn(
             "hidden h-full min-h-0 lg:block",
-            !isDesktopIdle &&
+            desktopMode === "player" &&
+              !isDesktopIdle &&
               "lg:grid lg:gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.1fr)] xl:grid-cols-[minmax(420px,0.92fr)_minmax(0,1.08fr)]",
           )}
         >
-          {isDesktopIdle ? (
+          {desktopMode === "library" ? (
+            <div className="grid h-full min-h-0 w-full gap-6 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] xl:grid-cols-[minmax(340px,400px)_minmax(0,1fr)]">
+              <div className="flex h-full min-h-0 flex-col gap-6">
+                <PlayerSection sidebarMode onSearchClick={handleSearchOpen} />
+              </div>
+              <div className="h-full min-h-0">
+                <LibraryView />
+              </div>
+            </div>
+          ) : isDesktopIdle ? (
             <div className="mx-auto flex h-full w-full max-w-[1180px] min-h-0 items-center justify-center">
               <PlayerSection isIdle onSearchClick={handleSearchOpen} />
             </div>
@@ -120,6 +139,7 @@ function App() {
 
       {/* 手機版底部迷你播放器 */}
       <MiniPlayer />
+      <MobileNowPlayingSheet />
 
       {/* 手機版底部 TabBar */}
       <TabBar />
@@ -129,6 +149,7 @@ function App() {
         open={isSearchModalOpen}
         onOpenChange={setIsSearchModalOpen}
       />
+      <PlaylistPickerDialog />
     </ToastProvider>
   );
 }

@@ -3,8 +3,15 @@ import { usePlayerStore } from "@/stores/playerStore";
 import { api } from "@/services/api";
 import { Spinner } from "@/components/ui/spinner";
 import { Pause, Play, SkipForward } from "lucide-react";
+import { RadioToggleButton } from "./RadioToggleButton";
 
-export const PlaybackControls = () => {
+interface PlaybackControlsProps {
+  showRadioToggle?: boolean;
+}
+
+export const PlaybackControls = ({
+  showRadioToggle = true,
+}: PlaybackControlsProps) => {
   // 分別選擇以避免創建新對象
   const isPlaying = usePlayerStore((state) => state.playbackState.isPlaying);
   const currentTrack = usePlayerStore(
@@ -28,34 +35,39 @@ export const PlaybackControls = () => {
   };
 
   return (
-    <div className="flex items-center justify-center gap-3">
-      <Button
-        variant="outline"
-        size="lg"
-        onClick={handleSkip}
-        disabled={!currentTrack}
-        title="跳過"
-        className="h-13 w-13 rounded-full px-0"
-      >
-        <SkipForward className="h-5 w-5" />
-      </Button>
+    <div className="flex flex-wrap items-center gap-3 xl:flex-nowrap">
+      {showRadioToggle ? (
+        <RadioToggleButton className="shrink-0" />
+      ) : null}
+      <div className="flex shrink-0 items-center gap-3">
+        <Button
+          variant="outline"
+          size="lg"
+          onClick={handleSkip}
+          disabled={!currentTrack}
+          title="跳過"
+          className="h-[52px] w-[52px] shrink-0 rounded-full px-0"
+        >
+          <SkipForward className="h-5 w-5" />
+        </Button>
 
-      <Button
-        variant="default"
-        size="lg"
-        onClick={handlePlayPause}
-        disabled={!currentTrack || isLoadingTrack}
-        title={isPlaying ? "暫停" : "播放"}
-        className="h-16 w-16 rounded-full px-0 text-lg shadow-[0_20px_34px_-18px_var(--accent-glow)]"
-      >
-        {isLoadingTrack ? (
-          <Spinner size="sm" />
-        ) : isPlaying ? (
-          <Pause className="h-7 w-7 fill-current" />
-        ) : (
-          <Play className="h-7 w-7 fill-current" />
-        )}
-      </Button>
+        <Button
+          variant="default"
+          size="lg"
+          onClick={handlePlayPause}
+          disabled={!currentTrack || isLoadingTrack}
+          title={isPlaying ? "暫停" : "播放"}
+          className="h-16 w-16 shrink-0 rounded-full px-0 text-lg shadow-[0_20px_34px_-18px_var(--accent-glow)]"
+        >
+          {isLoadingTrack ? (
+            <Spinner size="sm" />
+          ) : isPlaying ? (
+            <Pause className="h-7 w-7 fill-current" />
+          ) : (
+            <Play className="h-7 w-7 fill-current" />
+          )}
+        </Button>
+      </div>
     </div>
   );
 };

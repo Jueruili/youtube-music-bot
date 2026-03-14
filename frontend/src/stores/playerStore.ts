@@ -52,6 +52,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     duration: 0,
     volume: 50,
     queue: [],
+    radioEnabled: false,
+    lastPlayedTrack: null,
   },
   setPlaybackState: (state) => set({ playbackState: state }),
   updatePlaybackState: (partial) =>

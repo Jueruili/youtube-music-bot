@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/toast";
 import { usePlayerStore } from "@/stores/playerStore";
+import { useLibraryStore } from "@/stores/libraryStore";
 import { api } from "@/services/api";
 import type { Track } from "@/types";
 import { X } from "lucide-react";
@@ -28,6 +29,8 @@ export const SearchModal = ({ open, onOpenChange }: SearchModalProps) => {
 
   const searchResults = usePlayerStore((state) => state.searchResults);
   const setSearchResults = usePlayerStore((state) => state.setSearchResults);
+  const openPlaylistPicker = useLibraryStore((state) => state.openPlaylistPicker);
+  const saveMix = useLibraryStore((state) => state.saveMix);
   const { showToast } = useToast();
 
   const handleSearch = async (query: string) => {
@@ -84,6 +87,7 @@ export const SearchModal = ({ open, onOpenChange }: SearchModalProps) => {
     try {
       const response = await api.createMix(track);
       if (response.success && response.data) {
+        void saveMix(track, response.data.tracks);
         showToast({
           message: `已創建 Mix，加入 ${response.data.count} 首歌曲`,
           type: "success",
@@ -106,8 +110,8 @@ export const SearchModal = ({ open, onOpenChange }: SearchModalProps) => {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 flex flex-col">
-        <div className="border-b border-[color:var(--surface-border)] p-6 pb-5">
+      <DialogContent className="flex h-[min(90vh,960px)] w-[min(98vw,1360px)] max-w-[1360px] flex-col p-0">
+        <div className="border-b border-[color:var(--surface-border)] px-6 pb-5 pt-6 lg:px-8 lg:pb-6 lg:pt-7">
           <div className="mb-5 flex items-start justify-between gap-6">
             <div className="min-w-0">
               <DialogTitle className="text-[2rem] font-semibold tracking-tight">
@@ -117,37 +121,35 @@ export const SearchModal = ({ open, onOpenChange }: SearchModalProps) => {
                 找到想播的歌，直接加入佇列或建立 Mix。
               </p>
             </div>
-            <DialogClose asChild>
-              <button
-                type="button"
-                className="shrink-0 rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] p-4 text-[var(--text-secondary)] transition-all hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                aria-label="關閉搜尋"
-              >
-                <X className="h-6 w-6" />
-              </button>
+            <DialogClose
+              className="static shrink-0 rounded-full p-4"
+              aria-label="關閉搜尋"
+            >
+              <X className="h-6 w-6" />
             </DialogClose>
           </div>
           <SearchInput
             onSearch={handleSearch}
             isLoading={isSearching}
-            className="flex items-center gap-4"
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 lg:gap-5"
           />
         </div>
 
-        <ScrollArea className="flex-1 max-h-[60vh]">
-          <div className="p-6 pt-4">
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="p-6 pt-4 lg:px-8 lg:pb-8">
             {isSearching ? (
               <div className="flex justify-center py-12">
                 <Spinner size="lg" />
               </div>
             ) : searchResults.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {searchResults.map((result) => (
                   <SearchResultItem
                     key={result.videoId}
                     result={result}
                     onAdd={handleAddToQueue}
                     onCreateMix={handleCreateMix}
+                    onAddToPlaylist={openPlaylistPicker}
                     isAdding={addingId === result.videoId}
                     isCreatingMix={creatingMixId === result.videoId}
                   />
