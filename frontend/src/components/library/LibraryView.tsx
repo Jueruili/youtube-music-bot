@@ -99,6 +99,17 @@ export const LibraryView = ({ isMobile = false }: LibraryViewProps) => {
     showToast({ message: response.error || "重播 Mix 失敗", type: "error" });
   };
 
+  const handleAddTrackToQueue = async (track: PlaylistTrackEntry["track"]) => {
+    const response = await api.addToQueue(track);
+
+    if (response.success) {
+      showToast({ message: `已加入播放佇列：${track.title}`, type: "success" });
+      return;
+    }
+
+    showToast({ message: response.error || "加入播放佇列失敗", type: "error" });
+  };
+
   const handlePairDevice = async () => {
     if (!snapshot || !currentDevice || !pairCodeInput.trim()) {
       return;
@@ -258,7 +269,8 @@ export const LibraryView = ({ isMobile = false }: LibraryViewProps) => {
           tracks={snapshot.favorites.map((favorite) => favorite.track)}
           actionLabel="移除收藏"
           onAction={(track) => void toggleFavorite(track)}
-          onSecondaryAction={(track) => openPlaylistPicker(track)}
+          onQueueAction={(track) => void handleAddTrackToQueue(track)}
+          onPlaylistAction={(track) => openPlaylistPicker(track)}
         />
         <TrackSection
           title="播放歷史"
@@ -267,7 +279,8 @@ export const LibraryView = ({ isMobile = false }: LibraryViewProps) => {
           tracks={snapshot.history.map((entry) => entry.track)}
           actionLabel="收藏"
           onAction={(track) => void toggleFavorite(track)}
-          onSecondaryAction={(track) => openPlaylistPicker(track)}
+          onQueueAction={(track) => void handleAddTrackToQueue(track)}
+          onPlaylistAction={(track) => openPlaylistPicker(track)}
         />
       </div>
 
@@ -439,7 +452,8 @@ interface TrackSectionProps {
   tracks: PlaylistTrackEntry["track"][];
   actionLabel: string;
   onAction: (track: PlaylistTrackEntry["track"]) => void;
-  onSecondaryAction: (track: PlaylistTrackEntry["track"]) => void;
+  onQueueAction: (track: PlaylistTrackEntry["track"]) => void;
+  onPlaylistAction: (track: PlaylistTrackEntry["track"]) => void;
 }
 
 const TrackSection = ({
@@ -449,7 +463,8 @@ const TrackSection = ({
   tracks,
   actionLabel,
   onAction,
-  onSecondaryAction,
+  onQueueAction,
+  onPlaylistAction,
 }: TrackSectionProps) => (
   <Card className="surface-card rounded-[30px] p-5">
     <div className="mb-4">
@@ -475,8 +490,20 @@ const TrackSection = ({
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-              <Button variant="outline" className="rounded-2xl" onClick={() => onSecondaryAction(track)}>
+              <Button
+                variant="outline"
+                className="rounded-2xl px-3"
+                onClick={() => onQueueAction(track)}
+                aria-label={`加入播放佇列：${track.title}`}
+              >
                 <Plus className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-2xl"
+                onClick={() => onPlaylistAction(track)}
+              >
+                加入歌單
               </Button>
               <Button className="rounded-2xl" onClick={() => onAction(track)}>
                 {actionLabel}
