@@ -18,7 +18,8 @@ class PlayerService {
   private isPlaying = false;
   private eventCallback: PlayerEventCallback | null = null;
   private ipcConnectRetries = 0;
-  private readonly maxIpcRetries = 10;
+  // 增加重試次數以支援慢速系統（如樹莓派的 yt-dlp 解析需要 10+ 秒）
+  private readonly maxIpcRetries = 60;
   private playSessionId = 0;
   private eofHandled = false;
 
@@ -146,9 +147,10 @@ class PlayerService {
 
           if (this.ipcConnectRetries < maxRetries) {
             this.ipcConnectRetries++;
+            // 增加重試間隔以支援慢速系統（樹莓派 yt-dlp 需要 10+ 秒）
             setTimeout(
               attemptConnect,
-              process.platform === "win32" ? 250 : 100,
+              process.platform === "win32" ? 500 : 500,
             );
           } else {
             reject(
@@ -312,18 +314,17 @@ class PlayerService {
 
         const mpvArgs = [
           "--no-video",
-          // 移除 "--no-terminal" - 在容器環境中會導致 mpv 立即退出
           `--volume=${this.currentVolume}`,
           "--no-audio-display",
-          // 改為更詳細的日誌以便診斷
           "--msg-level=all=info",
           `--input-ipc-server=${this.ipcPath}`,
-          // 移除 "--idle=yes" - 與直接播放 URL 衝突，導致 mpv 立即退出
           "--cache=yes",
           "--cache-secs=30",
-          "--network-timeout=30", // 增加超時時間
+          "--network-timeout=60", // 增加超時時間（樹莓派需要更長）
           "--gapless-audio=yes",
-          ...getAudioArgs(), // 動態音頻參數
+          // 使用 iOS client 加速 yt-dlp 提取（從 26 秒減到 9 秒）
+          '--ytdl-raw-options=extractor-args="youtube:player_client=ios"',
+          ...getAudioArgs(),
           url,
         ];
 
