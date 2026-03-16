@@ -64,7 +64,7 @@ export const QueueItem = ({
       onTouchCancel={mobile ? onTouchCancel : undefined}
       className={cn(
         "group relative border transition-all",
-        mobile ? "rounded-[26px] px-3 py-3.5" : "rounded-[22px] p-3",
+        mobile ? "rounded-[24px] px-3 py-3" : "rounded-[22px] p-3",
         isNext
           ? "border-[color:var(--surface-border)] bg-[color:color-mix(in_srgb,var(--surface-elevated)_84%,var(--accent-soft)_16%)]"
           : "surface-subtle",
@@ -81,8 +81,13 @@ export const QueueItem = ({
           )}
         />
       ) : null}
-      <div className={cn("flex gap-3", mobile ? "items-start" : "items-center")}>
-        <div className={cn("flex items-center justify-center gap-1", mobile ? "w-8 pt-2" : "w-12")}>
+      <div className={cn("flex gap-3", mobile ? "items-start gap-2.5" : "items-center")}>
+        <div
+          className={cn(
+            "flex items-center justify-center gap-1",
+            mobile ? "w-6 pt-3" : "w-12",
+          )}
+        >
           <div
             draggable={!isRemoving}
             onDragStart={onDragStart}
@@ -91,15 +96,25 @@ export const QueueItem = ({
             title="拖拽重新排序"
             className={cn(
               "flex cursor-grab items-center justify-center text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text-secondary)] active:cursor-grabbing",
-              mobile ? "h-8 w-8 rounded-xl" : "h-10 w-10 rounded-2xl",
+              mobile ? "h-7 w-7 rounded-lg" : "h-10 w-10 rounded-2xl",
               mobile && "touch-none",
             )}
           >
             <GripVertical className="h-4 w-4" />
           </div>
         </div>
-        <div className={cn("flex flex-col items-center justify-center gap-1", mobile ? "w-5 pt-2" : "w-10")}>
-          <span className={cn("font-medium text-[var(--text-muted)]", mobile ? "text-base" : "text-sm")}>
+        <div
+          className={cn(
+            "flex flex-col items-center justify-center gap-1",
+            mobile ? "w-4 pt-3" : "w-10",
+          )}
+        >
+          <span
+            className={cn(
+              "font-medium text-[var(--text-muted)]",
+              mobile ? "text-sm" : "text-sm",
+            )}
+          >
             {index + 1}
           </span>
         </div>
@@ -107,20 +122,20 @@ export const QueueItem = ({
           src={track.thumbnail}
           alt={track.title}
           size={mobile ? "md" : "sm"}
-          className={cn("rounded-2xl", mobile && "h-14 w-14")}
+          className={cn("rounded-2xl", mobile && "h-16 w-16 rounded-[20px]")}
         />
         <div className="min-w-0 flex-1">
           <div
             className={cn(
               "mb-1 gap-2",
-              mobile ? "flex flex-col items-start" : "flex items-center",
+              mobile ? "flex flex-col items-start gap-1.5" : "flex items-center",
             )}
           >
             {isNext ? (
               <span
                 className={cn(
                   "rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-elevated)] font-bold uppercase tracking-[0.16em] text-[var(--accent)]",
-                  mobile ? "px-2.5 py-1 text-[10px]" : "px-2.5 py-1 text-[10px]",
+                  mobile ? "px-2.5 py-0.5 text-[10px]" : "px-2.5 py-1 text-[10px]",
                 )}
               >
                 Next
@@ -130,42 +145,47 @@ export const QueueItem = ({
               className={cn(
                 "text-[var(--text-primary)]",
                 mobile
-                  ? "line-clamp-2 text-[0.98rem] font-semibold leading-5"
+                  ? "line-clamp-2 text-[1rem] font-semibold leading-6"
                   : "truncate text-sm font-medium",
               )}
             >
               {track.title}
             </h4>
           </div>
-          <p className={cn("truncate text-[var(--text-secondary)]", mobile ? "text-sm" : "text-xs")}>
+          <p
+            className={cn(
+              "truncate text-[var(--text-secondary)]",
+              mobile ? "text-[0.98rem] leading-5" : "text-xs",
+            )}
+          >
             {track.artist} • {formatTime(track.duration)}
           </p>
         </div>
         <div
           className={cn(
             "shrink-0",
-            mobile ? "flex flex-col gap-1.5 pt-0.5" : "flex items-center gap-1",
+            mobile ? "flex flex-col gap-1 pt-1" : "flex items-center gap-1",
           )}
         >
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onToggleFavorite(track)}
-            disabled={favoriteDisabled}
-            title={isFavorite ? "取消收藏" : "收藏"}
-            className={cn(
-              mobile
-                ? "h-8 w-8 rounded-xl px-0 text-[var(--text-secondary)]"
-                : "opacity-40 transition-opacity group-hover:opacity-100",
-              isFavorite &&
-                "text-[var(--accent)] opacity-100 hover:text-[var(--accent)]",
-            )}
-          >
-            <Heart
-              className="h-4 w-4"
-              fill={isFavorite ? "currentColor" : "none"}
-            />
-          </Button>
+          {!mobile ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onToggleFavorite(track)}
+              disabled={favoriteDisabled}
+              title={isFavorite ? "取消收藏" : "收藏"}
+              className={cn(
+                "opacity-40 transition-opacity group-hover:opacity-100",
+                isFavorite &&
+                  "text-[var(--accent)] opacity-100 hover:text-[var(--accent)]",
+              )}
+            >
+              <Heart
+                className="h-4 w-4"
+                fill={isFavorite ? "currentColor" : "none"}
+              />
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"

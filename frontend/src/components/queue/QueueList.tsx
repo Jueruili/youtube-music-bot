@@ -147,7 +147,7 @@ export const QueueList = ({
   };
 
   return (
-    <div className={cn(mobile ? "space-y-3 p-2" : "space-y-2 p-4 pr-3")}>
+    <div className={cn(mobile ? "space-y-2.5 p-1" : "space-y-2 p-4 pr-3")}>
       {queue.map((track, index) => (
         <QueueItem
           key={`${track.videoId}-${index}`}

@@ -62,9 +62,9 @@ export const MobileNowPlayingSheet = () => {
         variant="bottom-sheet"
         className="lg:hidden border-0 bg-transparent p-0 shadow-none"
       >
-        <div className="surface-card-strong flex h-[90dvh] max-h-[90dvh] flex-col overflow-hidden rounded-t-[34px] border border-b-0 px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-28px_80px_-42px_var(--accent-glow)]">
-          <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[var(--surface-border)]" />
-          <div className="surface-subtle mb-4 rounded-[24px] border p-1.5">
+        <div className="surface-card-strong flex h-[90dvh] max-h-[90dvh] flex-col overflow-hidden rounded-t-[34px] border border-b-0 px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-28px_80px_-42px_var(--accent-glow)]">
+          <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-[var(--surface-border)]" />
+          <div className="surface-subtle mb-3 rounded-[22px] border p-1">
             <div className="grid grid-cols-3 gap-1.5">
               {[
                 { id: "player", label: "播放器" },
@@ -80,7 +80,7 @@ export const MobileNowPlayingSheet = () => {
                     )
                   }
                   className={cn(
-                    "h-11 rounded-[18px] text-sm font-semibold transition-all",
+                    "h-10 rounded-[16px] text-[0.95rem] font-semibold transition-all",
                     mobileNowPlayingView === tab.id
                       ? "bg-[var(--surface-elevated)] text-[var(--accent)] shadow-[0_14px_28px_-24px_var(--accent-glow)]"
                       : "text-[var(--text-secondary)]",
@@ -176,28 +176,28 @@ export const MobileNowPlayingSheet = () => {
               </div>
             </ScrollArea>
           ) : (
-            <div className="flex flex-1 min-h-0 flex-col gap-4 pb-1">
-              <div className="surface-subtle flex items-center gap-3 rounded-[24px] border px-4 py-3">
+            <div className="flex flex-1 min-h-0 flex-col gap-3 pb-1">
+              <div className="surface-subtle flex items-center gap-3 rounded-[22px] border px-3.5 py-3">
                 <AnimatedAvatar
                   src={currentTrack.thumbnail}
                   alt={currentTrack.title}
                   size="md"
-                  className="rounded-[18px]"
+                  className="h-14 w-14 rounded-[18px]"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-base font-semibold text-[var(--text-primary)]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
+                    {mobileNowPlayingView === "lyrics" ? "Lyrics View" : "Queue View"}
+                  </p>
+                  <p className="truncate text-[1rem] font-semibold text-[var(--text-primary)]">
                     {currentTrack.title}
                   </p>
                   <p className="truncate text-sm text-[var(--text-secondary)]">
                     {currentTrack.artist}
                   </p>
                 </div>
-                <span className="rounded-full border border-[color:var(--dynamic-ring)] bg-[var(--accent-soft)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
-                  {mobileNowPlayingView === "lyrics" ? "Lyrics" : "Queue"}
-                </span>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-hidden">
+              <div className="surface-subtle min-h-0 flex-1 overflow-hidden rounded-[28px] border px-3 py-3">
                 {mobileNowPlayingView === "lyrics" ? (
                   <LyricsDisplay mobile className="h-full" isVisible />
                 ) : (
