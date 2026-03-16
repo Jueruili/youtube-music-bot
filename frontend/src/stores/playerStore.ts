@@ -2,9 +2,12 @@ import { create } from "zustand";
 import type {
   ConnectionStatus,
   PlaybackState,
+  PlaybackProgress,
   Track,
   LyricLine,
 } from "@/types";
+
+let loadingTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 interface PlayerStore {
   // 連線狀態
@@ -15,6 +18,7 @@ interface PlayerStore {
   playbackState: PlaybackState;
   setPlaybackState: (state: PlaybackState) => void;
   updatePlaybackState: (partial: Partial<PlaybackState>) => void;
+  updatePlaybackProgress: (progress: PlaybackProgress) => void;
 
   // 載入狀態
   isLoadingTrack: boolean;
@@ -42,7 +46,10 @@ interface PlayerStore {
 export const usePlayerStore = create<PlayerStore>((set) => ({
   // 連線狀態
   connectionStatus: "disconnected",
-  setConnectionStatus: (status) => set({ connectionStatus: status }),
+  setConnectionStatus: (status) =>
+    set((state) =>
+      state.connectionStatus === status ? state : { connectionStatus: status },
+    ),
 
   // 播放狀態
   playbackState: {
@@ -55,43 +62,168 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     radioEnabled: false,
     lastPlayedTrack: null,
   },
-  setPlaybackState: (state) => set({ playbackState: state }),
+  setPlaybackState: (nextState) =>
+    set((state) =>
+      isSamePlaybackState(state.playbackState, nextState)
+        ? state
+        : { playbackState: nextState },
+    ),
   updatePlaybackState: (partial) =>
-    set((state) => ({
-      playbackState: { ...state.playbackState, ...partial },
-    })),
+    set((state) => {
+      const nextPlaybackState = {
+        ...state.playbackState,
+        ...partial,
+      };
+
+      return isSamePlaybackState(state.playbackState, nextPlaybackState)
+        ? state
+        : { playbackState: nextPlaybackState };
+    }),
+  updatePlaybackProgress: (progress) =>
+    set((state) => {
+      const currentTrackId = state.playbackState.currentTrack?.videoId ?? null;
+      if (progress.trackId !== currentTrackId) {
+        return state;
+      }
+
+      if (
+        state.playbackState.position === progress.position &&
+        state.playbackState.duration === progress.duration &&
+        state.playbackState.isPlaying === progress.isPlaying
+      ) {
+        return state;
+      }
+
+      return {
+        playbackState: {
+          ...state.playbackState,
+          position: progress.position,
+          duration: progress.duration,
+          isPlaying: progress.isPlaying,
+        },
+      };
+    }),
 
   // 載入狀態
   isLoadingTrack: false,
   loadingMessage: null,
   setLoadingTrack: (loading, message) => {
-    set({ isLoadingTrack: loading, loadingMessage: message || null });
+    if (loadingTimeoutId) {
+      clearTimeout(loadingTimeoutId);
+      loadingTimeoutId = null;
+    }
+
+    set((state) => {
+      const nextMessage = message || null;
+
+      if (
+        state.isLoadingTrack === loading &&
+        state.loadingMessage === nextMessage
+      ) {
+        return state;
+      }
+
+      return {
+        isLoadingTrack: loading,
+        loadingMessage: nextMessage,
+      };
+    });
 
     // 如果開始載入，設定 10 秒超時自動清除
     if (loading) {
-      setTimeout(() => {
+      loadingTimeoutId = setTimeout(() => {
         // 如果 10 秒後仍在載入，自動清除
         if (usePlayerStore.getState().isLoadingTrack) {
           set({ isLoadingTrack: false, loadingMessage: null });
         }
+        loadingTimeoutId = null;
       }, 10000);
     }
   },
 
   // 歌詞
   lyrics: [],
-  setLyrics: (lyrics) => set({ lyrics }),
+  setLyrics: (lyrics) =>
+    set((state) => (state.lyrics === lyrics ? state : { lyrics })),
 
   // 搜尋結果
   searchResults: [],
-  setSearchResults: (results) => set({ searchResults: results }),
-  clearSearchResults: () => set({ searchResults: [] }),
+  setSearchResults: (results) =>
+    set((state) =>
+      state.searchResults === results ? state : { searchResults: results },
+    ),
+  clearSearchResults: () =>
+    set((state) =>
+      state.searchResults.length === 0 ? state : { searchResults: [] },
+    ),
 
   // 手機版搜尋狀態
   isMobileSearchOpen: false,
-  setMobileSearchOpen: (open) => set({ isMobileSearchOpen: open }),
+  setMobileSearchOpen: (open) =>
+    set((state) =>
+      state.isMobileSearchOpen === open
+        ? state
+        : { isMobileSearchOpen: open },
+    ),
 
   // 手機版 TabBar 狀態
   mobileActiveTab: "search",
-  setMobileActiveTab: (tab) => set({ mobileActiveTab: tab }),
+  setMobileActiveTab: (tab) =>
+    set((state) =>
+      state.mobileActiveTab === tab ? state : { mobileActiveTab: tab },
+    ),
 }));
+
+function areTracksEqual(left: Track | null, right: Track | null): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    left.videoId === right.videoId &&
+    left.title === right.title &&
+    left.artist === right.artist &&
+    left.duration === right.duration &&
+    left.thumbnail === right.thumbnail &&
+    left.queueOrigin === right.queueOrigin &&
+    left.radioGenerated === right.radioGenerated
+  );
+}
+
+function areQueuesEqual(left: Track[], right: Track[]): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (!areTracksEqual(left[index], right[index])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function isSamePlaybackState(
+  left: PlaybackState,
+  right: PlaybackState,
+): boolean {
+  return (
+    left.isPlaying === right.isPlaying &&
+    left.position === right.position &&
+    left.duration === right.duration &&
+    left.volume === right.volume &&
+    left.radioEnabled === right.radioEnabled &&
+    areTracksEqual(left.currentTrack, right.currentTrack) &&
+    areTracksEqual(left.lastPlayedTrack, right.lastPlayedTrack) &&
+    areQueuesEqual(left.queue, right.queue)
+  );
+}

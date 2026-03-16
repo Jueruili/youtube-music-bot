@@ -18,6 +18,9 @@ export const useWebSocket = () => {
   const updatePlaybackState = usePlayerStore(
     (state) => state.updatePlaybackState,
   );
+  const updatePlaybackProgress = usePlayerStore(
+    (state) => state.updatePlaybackProgress,
+  );
   const setLyrics = usePlayerStore((state) => state.setLyrics);
 
   const handleMessage = useCallback(
@@ -68,6 +71,10 @@ export const useWebSocket = () => {
           updatePlaybackState({ queue: message.queue });
           break;
 
+        case "playback_progress":
+          updatePlaybackProgress(message.progress);
+          break;
+
         case "lyrics":
           setLyrics(message.lyrics);
           break;
@@ -96,7 +103,12 @@ export const useWebSocket = () => {
           console.log("未處理的訊息類型:", message);
       }
     },
-    [setPlaybackState, updatePlaybackState, setLyrics],
+    [
+      setPlaybackState,
+      updatePlaybackProgress,
+      updatePlaybackState,
+      setLyrics,
+    ],
   );
 
   const connect = useCallback(() => {

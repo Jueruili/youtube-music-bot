@@ -21,9 +21,9 @@ export const PlayerSection = ({
   sidebarMode = false,
 }: PlayerSectionProps) => {
   const currentTrack = usePlayerStore((state) => state.playbackState.currentTrack);
-  const queue = usePlayerStore((state) => state.playbackState.queue);
-  const nextTrack = queue[0];
-  const shouldShowIdleLayout = isIdle || (!currentTrack && queue.length === 0);
+  const nextTrack = usePlayerStore((state) => state.playbackState.queue[0] ?? null);
+  const queueLength = usePlayerStore((state) => state.playbackState.queue.length);
+  const shouldShowIdleLayout = isIdle || (!currentTrack && queueLength === 0);
   const isSidebarPlayer = sidebarMode && !shouldShowIdleLayout;
 
   return (

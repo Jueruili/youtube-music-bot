@@ -5,6 +5,7 @@ import { log } from "../utils/logger.ts";
 
 // 所有連接的客戶端
 const clients = new Set<ServerWebSocket<unknown>>();
+let websocketInitialized = false;
 
 /**
  * 廣播訊息給所有客戶端
@@ -123,6 +124,10 @@ export function handleWebSocketClose(ws: ServerWebSocket<unknown>): void {
  * 初始化 WebSocket 廣播
  */
 export function initializeWebSocket(): void {
+  if (websocketInitialized) {
+    return;
+  }
+
   const queueService = getQueueService();
 
   // 監聽佇列變更
@@ -171,6 +176,13 @@ export function initializeWebSocket(): void {
     }
   });
 
+  queueService.onProgressChange((progress) => {
+    broadcast({
+      type: "playback_progress",
+      progress,
+    });
+  });
+
   // 監聽歌詞變更
   queueService.onLyricsChange((lyrics) => {
     broadcast({
@@ -179,5 +191,6 @@ export function initializeWebSocket(): void {
     });
   });
 
+  websocketInitialized = true;
   log.info("WebSocket broadcasting initialized");
 }

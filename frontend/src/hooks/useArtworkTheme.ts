@@ -16,6 +16,7 @@ const resolvedThemeCache = new Map<string, ArtworkThemeTokens | null>();
 const pendingThemeCache = new Map<string, Promise<ArtworkThemeTokens | null>>();
 
 const THEME_CROSSFADE_DURATION_MS = 640;
+const THEME_CACHE_LIMIT = 40;
 
 export interface ArtworkThemeState {
   currentTokens: ArtworkThemeTokens;
@@ -144,17 +145,17 @@ async function getArtworkThemeTokens(
 
   const extractionPromise = extractArtworkThemeTokens(artworkUrl, mode)
     .then((tokens) => {
-      resolvedThemeCache.set(cacheKey, tokens);
+      setCappedCacheValue(resolvedThemeCache, cacheKey, tokens);
       pendingThemeCache.delete(cacheKey);
       return tokens;
     })
     .catch(() => {
-      resolvedThemeCache.set(cacheKey, null);
+      setCappedCacheValue(resolvedThemeCache, cacheKey, null);
       pendingThemeCache.delete(cacheKey);
       return null;
     });
 
-  pendingThemeCache.set(cacheKey, extractionPromise);
+  setCappedCacheValue(pendingThemeCache, cacheKey, extractionPromise);
 
   return extractionPromise;
 }
@@ -215,5 +216,25 @@ function applyArtworkTheme(tokens: ArtworkThemeTokens): void {
 
   for (const [tokenName, tokenValue] of Object.entries(tokens)) {
     root.style.setProperty(tokenName, tokenValue);
+  }
+}
+
+function setCappedCacheValue<T>(
+  cache: Map<string, T>,
+  key: string,
+  value: T,
+): void {
+  if (cache.has(key)) {
+    cache.delete(key);
+  }
+
+  cache.set(key, value);
+
+  while (cache.size > THEME_CACHE_LIMIT) {
+    const oldestKey = cache.keys().next().value;
+    if (typeof oldestKey !== "string") {
+      break;
+    }
+    cache.delete(oldestKey);
   }
 }

@@ -1,4 +1,9 @@
-import type { QueueOrigin, Track, PlaybackState } from "../types/index.ts";
+import type {
+  QueueOrigin,
+  Track,
+  PlaybackState,
+  PlaybackProgress,
+} from "../types/index.ts";
 import { getPlayerService } from "./player.service.ts";
 import { getMusicService } from "./music.service.ts";
 import { pushRecentTrackId, selectRadioCandidates } from "./radio.helpers.ts";
@@ -6,7 +11,10 @@ import { log } from "../utils/logger.ts";
 
 type QueueChangeCallback = (queue: Track[]) => void;
 type PlaybackStateCallback = (state: PlaybackState) => void;
+type PlaybackProgressCallback = (progress: PlaybackProgress) => void;
 type LyricsChangeCallback = (lyrics: any[]) => void;
+
+const PROGRESS_BROADCAST_INTERVAL_MS = 250;
 
 class QueueService {
   private static instance: QueueService | undefined;
@@ -24,24 +32,34 @@ class QueueService {
   private lastEofTimestamp = 0; // 記錄 EOF 時間，用於抑制假 pause 事件
   private queueChangeCallbacks: QueueChangeCallback[] = [];
   private stateChangeCallbacks: PlaybackStateCallback[] = [];
+  private progressChangeCallbacks: PlaybackProgressCallback[] = [];
   private lyricsChangeCallbacks: LyricsChangeCallback[] = [];
+  private pendingProgressTimeout: ReturnType<typeof setTimeout> | null = null;
+  private lastProgressBroadcastAt = 0;
+  private lastProgressPayload: PlaybackProgress | null = null;
 
   private constructor() {
     // 監聽播放器事件
     const player = getPlayerService();
     player.onEvent((event) => {
+      let shouldBroadcastProgress = false;
+      let shouldBroadcastState = false;
+
       if (event.timePos !== undefined) {
         this.currentPosition = event.timePos;
+        shouldBroadcastProgress = true;
       }
       if (event.duration !== undefined) {
         this.currentDuration = event.duration;
+        shouldBroadcastProgress = true;
       }
 
       // EOF 處理
       if (event.eof === true) {
         this.lastEofTimestamp = Date.now(); // 記錄 EOF 時間
         log.info("Track ended, playing next...");
-        this.playNext();
+        void this.playNext();
+        return;
       }
 
       // Pause 處理 - 抑制 EOF 後 2 秒內的假暫停
@@ -57,10 +75,17 @@ class QueueService {
           return; // 直接返回，不處理也不廣播
         }
         this.isPaused = event.paused;
+        shouldBroadcastState = true;
+        shouldBroadcastProgress = true;
       }
 
-      // 廣播狀態變更
-      this.broadcastState();
+      if (shouldBroadcastState) {
+        this.broadcastState();
+      }
+
+      if (shouldBroadcastProgress) {
+        this.broadcastProgress({ force: shouldBroadcastState });
+      }
     });
   }
 
@@ -93,6 +118,13 @@ class QueueService {
   }
 
   /**
+   * 註冊播放進度變更回調
+   */
+  onProgressChange(callback: PlaybackProgressCallback): void {
+    this.progressChangeCallbacks.push(callback);
+  }
+
+  /**
    * 註冊歌詞變更回調
    */
   onLyricsChange(callback: LyricsChangeCallback): void {
@@ -112,20 +144,67 @@ class QueueService {
    * 廣播狀態變更
    */
   private broadcastState(): void {
-    const state: PlaybackState = {
-      isPlaying: !this.isPaused && this.currentTrack !== null,
-      currentTrack: this.currentTrack,
-      position: this.currentPosition,
-      duration: this.currentDuration,
-      volume: getPlayerService().getVolume(),
-      queue: [...this.queue],
-      radioEnabled: this.radioEnabled,
-      lastPlayedTrack: this.lastPlayedTrack,
-    };
+    const state = this.getState();
 
     for (const callback of this.stateChangeCallbacks) {
       callback(state);
     }
+  }
+
+  private broadcastProgress(options: { force?: boolean } = {}): void {
+    const progress = this.getProgress();
+    const hasMeaningfulChange = !isSameProgress(
+      this.lastProgressPayload,
+      progress,
+    );
+
+    if (!hasMeaningfulChange) {
+      if (this.pendingProgressTimeout) {
+        clearTimeout(this.pendingProgressTimeout);
+        this.pendingProgressTimeout = null;
+      }
+      return;
+    }
+
+    const emit = () => {
+      this.pendingProgressTimeout = null;
+      const latestProgress = this.getProgress();
+
+      if (isSameProgress(this.lastProgressPayload, latestProgress)) {
+        return;
+      }
+
+      this.lastProgressPayload = latestProgress;
+      this.lastProgressBroadcastAt = Date.now();
+
+      for (const callback of this.progressChangeCallbacks) {
+        callback(latestProgress);
+      }
+    };
+
+    if (options.force) {
+      if (this.pendingProgressTimeout) {
+        clearTimeout(this.pendingProgressTimeout);
+        this.pendingProgressTimeout = null;
+      }
+      emit();
+      return;
+    }
+
+    const elapsed = Date.now() - this.lastProgressBroadcastAt;
+    if (elapsed >= PROGRESS_BROADCAST_INTERVAL_MS) {
+      emit();
+      return;
+    }
+
+    if (this.pendingProgressTimeout) {
+      return;
+    }
+
+    this.pendingProgressTimeout = setTimeout(
+      emit,
+      PROGRESS_BROADCAST_INTERVAL_MS - elapsed,
+    );
   }
 
   /**
@@ -388,6 +467,7 @@ class QueueService {
     this.isPaused = false;
     getPlayerService().resume();
     this.broadcastState();
+    this.broadcastProgress({ force: true });
   }
 
   /**
@@ -406,6 +486,7 @@ class QueueService {
     this.isPaused = true;
     getPlayerService().pause();
     this.broadcastState();
+    this.broadcastProgress({ force: true });
   }
 
   /**
@@ -434,6 +515,7 @@ class QueueService {
 
     this.radioEnabled = true;
     this.broadcastState();
+    this.broadcastProgress({ force: true });
     this.maybeHydrateRadioQueue({ force: true });
   }
 
@@ -444,6 +526,7 @@ class QueueService {
 
     this.radioEnabled = false;
     this.broadcastState();
+    this.broadcastProgress({ force: true });
   }
 
   toggleRadio(): void {
@@ -484,7 +567,7 @@ class QueueService {
     log.debug("Seeking to position", { position: clampedPosition });
     this.currentPosition = clampedPosition;
     getPlayerService().seek(clampedPosition);
-    this.broadcastState();
+    this.broadcastProgress({ force: true });
   }
 
   /**
@@ -499,7 +582,7 @@ class QueueService {
    */
   getState(): PlaybackState {
     return {
-      isPlaying: !this.isPaused && this.currentTrack !== null,
+      isPlaying: this.getIsPlaying(),
       currentTrack: this.currentTrack,
       position: this.currentPosition,
       duration: this.currentDuration,
@@ -507,6 +590,15 @@ class QueueService {
       queue: [...this.queue],
       radioEnabled: this.radioEnabled,
       lastPlayedTrack: this.lastPlayedTrack,
+    };
+  }
+
+  getProgress(): PlaybackProgress {
+    return {
+      trackId: this.currentTrack?.videoId ?? null,
+      position: this.currentPosition,
+      duration: this.currentDuration,
+      isPlaying: this.getIsPlaying(),
     };
   }
 
@@ -605,7 +697,19 @@ class QueueService {
     this.lastEofTimestamp = 0;
     this.queueChangeCallbacks = [];
     this.stateChangeCallbacks = [];
+    this.progressChangeCallbacks = [];
     this.lyricsChangeCallbacks = [];
+    this.lastProgressBroadcastAt = 0;
+    this.lastProgressPayload = null;
+
+    if (this.pendingProgressTimeout) {
+      clearTimeout(this.pendingProgressTimeout);
+      this.pendingProgressTimeout = null;
+    }
+  }
+
+  private getIsPlaying(): boolean {
+    return !this.isPaused && this.currentTrack !== null;
   }
 
   private withOrigin(track: Track, origin: QueueOrigin): Track {
@@ -732,6 +836,22 @@ class QueueService {
       20,
     );
   }
+}
+
+function isSameProgress(
+  left: PlaybackProgress | null,
+  right: PlaybackProgress,
+): boolean {
+  if (!left) {
+    return false;
+  }
+
+  return (
+    left.trackId === right.trackId &&
+    left.position === right.position &&
+    left.duration === right.duration &&
+    left.isPlaying === right.isPlaying
+  );
 }
 
 export function getQueueService(): QueueService {

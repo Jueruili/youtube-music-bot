@@ -4,6 +4,8 @@ import { useLibraryStore, getCurrentDevice } from "@/stores/libraryStore";
 import { toSyncedLibraryPayload } from "@/utils/librarySync";
 import type { SyncSessionDevice, SyncedLibraryPayload } from "@/types/library";
 
+const SNAPSHOT_SYNC_DEBOUNCE_MS = 400;
+
 function getSyncWebSocketUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
 
@@ -26,6 +28,7 @@ export function useLibrarySync(): void {
 
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const snapshotSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const lastSentPayloadRef = useRef<string | null>(null);
   const lastRegisteredSessionRef = useRef<string | null>(null);
@@ -34,6 +37,34 @@ export function useLibrarySync(): void {
   const currentDeviceId = currentDevice?.id ?? null;
   const currentDeviceName = currentDevice?.name ?? null;
   const currentDeviceKind = currentDevice?.kind ?? null;
+
+  const sendSnapshot = (
+    nextSnapshot = useLibraryStore.getState().snapshot,
+  ): void => {
+    if (
+      !nextSnapshot?.syncSessionId ||
+      socketRef.current?.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
+
+    const payload = toSyncedLibraryPayload(nextSnapshot);
+    const serializedPayload = JSON.stringify(payload);
+
+    if (serializedPayload === lastSentPayloadRef.current) {
+      return;
+    }
+
+    lastSentPayloadRef.current = serializedPayload;
+    socketRef.current.send(
+      JSON.stringify({
+        type: "sync_snapshot",
+        sessionId: nextSnapshot.syncSessionId,
+        sourceDeviceId: nextSnapshot.deviceId,
+        payload,
+      }),
+    );
+  };
 
   useEffect(() => {
     if (
@@ -148,14 +179,7 @@ export function useLibrarySync(): void {
               pairCode: String(message.pairCode ?? ""),
               error: null,
             });
-            ws.send(
-              JSON.stringify({
-                type: "sync_snapshot",
-                sessionId: snapshot.syncSessionId,
-                sourceDeviceId: currentDeviceId,
-                payload: toSyncedLibraryPayload(useLibraryStore.getState().snapshot!),
-              }),
-            );
+            sendSnapshot();
             break;
 
           case "sync_devices":
@@ -165,14 +189,7 @@ export function useLibrarySync(): void {
             break;
 
           case "sync_snapshot_request":
-            ws.send(
-              JSON.stringify({
-                type: "sync_snapshot",
-                sessionId: snapshot.syncSessionId,
-                sourceDeviceId: currentDeviceId,
-                payload: toSyncedLibraryPayload(useLibraryStore.getState().snapshot!),
-              }),
-            );
+            sendSnapshot();
             break;
 
           case "sync_snapshot":
@@ -230,6 +247,10 @@ export function useLibrarySync(): void {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
+      if (snapshotSyncTimeoutRef.current) {
+        clearTimeout(snapshotSyncTimeoutRef.current);
+        snapshotSyncTimeoutRef.current = null;
+      }
     };
   }, [
     applySyncSession,
@@ -256,19 +277,20 @@ export function useLibrarySync(): void {
       return;
     }
 
-    const payload = JSON.stringify(toSyncedLibraryPayload(snapshot));
-    if (payload === lastSentPayloadRef.current) {
-      return;
+    if (snapshotSyncTimeoutRef.current) {
+      clearTimeout(snapshotSyncTimeoutRef.current);
     }
 
-    lastSentPayloadRef.current = payload;
-    socketRef.current.send(
-      JSON.stringify({
-        type: "sync_snapshot",
-        sessionId: snapshot.syncSessionId,
-        sourceDeviceId: snapshot.deviceId,
-        payload: JSON.parse(payload),
-      }),
-    );
+    snapshotSyncTimeoutRef.current = setTimeout(() => {
+      sendSnapshot(snapshot);
+      snapshotSyncTimeoutRef.current = null;
+    }, SNAPSHOT_SYNC_DEBOUNCE_MS);
+
+    return () => {
+      if (snapshotSyncTimeoutRef.current) {
+        clearTimeout(snapshotSyncTimeoutRef.current);
+        snapshotSyncTimeoutRef.current = null;
+      }
+    };
   }, [ready, snapshot, syncStatus]);
 }

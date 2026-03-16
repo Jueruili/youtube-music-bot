@@ -34,9 +34,11 @@ function App() {
   const desktopMode = useAppUiStore((state) => state.desktopMode);
   const mobileActiveTab = usePlayerStore((state) => state.mobileActiveTab);
   const currentTrack = usePlayerStore((state) => state.playbackState.currentTrack);
-  const queue = usePlayerStore((state) => state.playbackState.queue);
+  const hasQueuedTracks = usePlayerStore(
+    (state) => state.playbackState.queue.length > 0,
+  );
   const artworkTheme = useArtworkTheme();
-  const isDesktopIdle = !currentTrack && queue.length === 0;
+  const isDesktopIdle = !currentTrack && !hasQueuedTracks;
 
   // 初始化 WebSocket 連接
   useWebSocket();

@@ -9,7 +9,7 @@ interface QueueSectionProps {
 }
 
 export const QueueSection = ({ mobile = false, className }: QueueSectionProps) => {
-  const queue = usePlayerStore((state) => state.playbackState.queue);
+  const queueLength = usePlayerStore((state) => state.playbackState.queue.length);
 
   return (
     <Card
@@ -28,7 +28,7 @@ export const QueueSection = ({ mobile = false, className }: QueueSectionProps) =
         )}
       >
         <CardTitle className={cn(mobile ? "text-[1.55rem] leading-none" : "text-xl")}>
-          播放佇列 ({queue.length})
+          播放佇列 ({queueLength})
         </CardTitle>
         <p
           className={cn(

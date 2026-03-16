@@ -13,6 +13,15 @@ import {
   isLyricScrollAligned,
 } from "@/utils/lyricsAlignment";
 
+const ENTRY_ALIGNMENT_DELAY_MS = 16;
+const ENTRY_ALIGNMENT_DURATION_MS = 1200;
+const PLAYBACK_ALIGNMENT_DURATION_MS = 420;
+const LAYOUT_ALIGNMENT_DELAY_MS = 40;
+const LAYOUT_ALIGNMENT_DURATION_MS = 720;
+const MANUAL_RESUME_DELAY_MS = 1400;
+const MANUAL_LEAVE_RESUME_DELAY_MS = 220;
+const MANUAL_RESUME_DURATION_MS = 560;
+
 interface LyricsContentProps {
   className?: string;
   /**
@@ -44,12 +53,24 @@ export const LyricsContent = ({
   const activeRef = useRef<HTMLDivElement>(null);
   const alignmentFrameRef = useRef<number | null>(null);
   const alignmentTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const manualResumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alignmentDeadlineRef = useRef(0);
   const lastAlignmentFrameTimeRef = useRef<number | null>(null);
+  const suppressScrollEventsUntilRef = useRef(0);
   const isHoveringLyricsRef = useRef(false);
+  const isManualScrollModeRef = useRef(false);
   const hasVisibleViewportRef = useRef(false);
+  const entryAlignmentPendingRef = useRef(true);
+  const previousTrackIdRef = useRef<string | null>(null);
+  const previousIndexRef = useRef(-1);
+  const previousLyricsKeyRef = useRef("");
+  const previousLayoutVersionRef = useRef(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [layoutVersion, setLayoutVersion] = useState(0);
+  const hasLyrics = lyrics.length > 0;
+  const lyricsKey = `${currentTrack?.videoId ?? "no-track"}::${lyrics.length}::${
+    lyrics[0]?.time ?? -1
+  }::${lyrics[lyrics.length - 1]?.time ?? -1}`;
 
   // 根據 variant 決定顏色樣式
   const colorStyles = {
@@ -70,6 +91,9 @@ export const LyricsContent = ({
     if (!currentTrack || !Number.isFinite(time) || time < 0) {
       return;
     }
+
+    clearManualResumeTimer();
+    isManualScrollModeRef.current = false;
 
     try {
       if (!isPlaying) {
@@ -95,26 +119,29 @@ export const LyricsContent = ({
   };
 
   const getTargetScrollTop = useCallback(() => {
-    if (
-      !scrollAreaRef.current ||
-      !activeRef.current ||
-      containerHeight <= 0 ||
-      scrollAreaRef.current.clientHeight <= 0
-    ) {
+    const scrollArea = scrollAreaRef.current;
+    const fallbackLine =
+      currentIndex < 0
+        ? contentRef.current?.querySelector<HTMLDivElement>(
+            '[data-lyric-index="0"]',
+          ) ?? null
+        : null;
+    const activeLine = activeRef.current ?? fallbackLine;
+
+    if (!scrollArea || !activeLine || scrollArea.clientHeight <= 0) {
       return null;
     }
 
-    const scrollArea = scrollAreaRef.current;
-      const activeLine = activeRef.current;
+    const viewportHeight = scrollArea.clientHeight;
     const offsetTop = activeLine.offsetTop;
 
     return calculateLyricScrollTop({
       activeOffsetTop: offsetTop,
       activeHeight: activeLine.offsetHeight,
-      viewportHeight: scrollArea.clientHeight,
+      viewportHeight,
       scrollHeight: scrollArea.scrollHeight,
     });
-  }, [containerHeight]);
+  }, [currentIndex]);
 
   const stopAlignmentSession = useCallback(() => {
     if (alignmentFrameRef.current !== null) {
@@ -125,6 +152,13 @@ export const LyricsContent = ({
     if (alignmentTimeoutRef.current) {
       clearTimeout(alignmentTimeoutRef.current);
       alignmentTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearManualResumeTimer = useCallback(() => {
+    if (manualResumeTimeoutRef.current) {
+      clearTimeout(manualResumeTimeoutRef.current);
+      manualResumeTimeoutRef.current = null;
     }
   }, []);
 
@@ -140,7 +174,7 @@ export const LyricsContent = ({
       initialBehavior?: ScrollBehavior;
       ignoreHover?: boolean;
     } = {}) => {
-      if (!isVisible || currentIndex < 0) {
+      if (!isVisible || !hasLyrics) {
         return;
       }
 
@@ -152,7 +186,7 @@ export const LyricsContent = ({
         let hasStartedMotion = false;
 
         const step = (now: number) => {
-          if (!isVisible || currentIndex < 0) {
+          if (!isVisible || !hasLyrics) {
             stopAlignmentSession();
             return;
           }
@@ -196,6 +230,7 @@ export const LyricsContent = ({
             scrollArea.scrollTop + distanceToTarget * easingFactor;
 
           hasStartedMotion = true;
+          suppressScrollEventsUntilRef.current = performance.now() + 120;
           scrollArea.scrollTop = nextScrollTop;
 
           if (
@@ -213,6 +248,7 @@ export const LyricsContent = ({
       }, delay);
     },
     [
+      hasLyrics,
       currentIndex,
       getTargetScrollTop,
       isVisible,
@@ -220,55 +256,181 @@ export const LyricsContent = ({
     ],
   );
 
-  // 歌詞換句時，如果目前沒有 hover 在歌詞區上，就立刻校正到中央。
-  useLayoutEffect(() => {
-    if (currentIndex < 0 || isHoveringLyricsRef.current || !isVisible) {
+  const resumeAutomaticFocus = useCallback(
+    (duration = MANUAL_RESUME_DURATION_MS) => {
+      clearManualResumeTimer();
+      isManualScrollModeRef.current = false;
+
+      if (!hasLyrics || !isVisible) {
+        return;
+      }
+
+      startAlignmentSession({
+        delay: 0,
+        duration,
+        initialBehavior: "smooth",
+        ignoreHover: true,
+      });
+    },
+    [clearManualResumeTimer, hasLyrics, isVisible, startAlignmentSession],
+  );
+
+  const scheduleManualResume = useCallback(
+    (delay = MANUAL_RESUME_DELAY_MS) => {
+      clearManualResumeTimer();
+      manualResumeTimeoutRef.current = setTimeout(() => {
+        resumeAutomaticFocus();
+      }, delay);
+    },
+    [clearManualResumeTimer, resumeAutomaticFocus],
+  );
+
+  const registerManualScrollIntent = useCallback(() => {
+    if (!isVisible || !hasLyrics) {
       return;
     }
 
-    startAlignmentSession({
-      delay: 0,
-      duration: 420,
-      initialBehavior: "smooth",
-    });
-  }, [
-    containerHeight,
-    currentIndex,
-    isVisible,
-    layoutVersion,
-    lyrics.length,
-    startAlignmentSession,
-  ]);
+    stopAlignmentSession();
+    isManualScrollModeRef.current = true;
+    scheduleManualResume();
+  }, [hasLyrics, isVisible, scheduleManualResume, stopAlignmentSession]);
 
-  // 換歌、重新播放、或歌詞剛載入時，主動校正一次目前句子的位置。
+  const scheduleAlignment = useCallback(
+    (
+      reason:
+        | "entry"
+        | "playback"
+        | "layout"
+        | "track"
+        | "visibility"
+        | "focus"
+        | "manual_resume",
+    ) => {
+      if (!hasLyrics || !isVisible) {
+        return;
+      }
+
+      if (
+        isManualScrollModeRef.current &&
+        reason !== "entry" &&
+        reason !== "track" &&
+        reason !== "visibility" &&
+        reason !== "manual_resume"
+      ) {
+        return;
+      }
+
+      if (
+        isHoveringLyricsRef.current &&
+        reason !== "entry" &&
+        reason !== "track" &&
+        reason !== "visibility" &&
+        reason !== "manual_resume"
+      ) {
+        return;
+      }
+
+      if (reason === "entry" || reason === "track" || reason === "visibility") {
+        startAlignmentSession({
+          delay: ENTRY_ALIGNMENT_DELAY_MS,
+          duration: ENTRY_ALIGNMENT_DURATION_MS,
+          initialBehavior: "auto",
+          ignoreHover: true,
+        });
+        return;
+      }
+
+      if (reason === "layout") {
+        startAlignmentSession({
+          delay: LAYOUT_ALIGNMENT_DELAY_MS,
+          duration: LAYOUT_ALIGNMENT_DURATION_MS,
+          initialBehavior: "auto",
+        });
+        return;
+      }
+
+      if (reason === "manual_resume") {
+        resumeAutomaticFocus();
+        return;
+      }
+
+      startAlignmentSession({
+        delay: 0,
+        duration: reason === "focus" ? 1000 : PLAYBACK_ALIGNMENT_DURATION_MS,
+        initialBehavior: "smooth",
+      });
+    },
+    [hasLyrics, isVisible, resumeAutomaticFocus, startAlignmentSession],
+  );
+
   useEffect(() => {
-    if (
-      currentIndex < 0 ||
-      !currentTrack ||
-      isHoveringLyricsRef.current ||
-      !isVisible
-    ) {
+    if (!isVisible || !hasLyrics) {
+      stopAlignmentSession();
+      clearManualResumeTimer();
+      isManualScrollModeRef.current = false;
+      entryAlignmentPendingRef.current = true;
+      previousTrackIdRef.current = currentTrack?.videoId ?? null;
+      previousIndexRef.current = currentIndex;
+      previousLyricsKeyRef.current = lyricsKey;
+      previousLayoutVersionRef.current = layoutVersion;
       return;
     }
 
-    startAlignmentSession({
-      delay: 120,
-      duration: 1200,
-      initialBehavior: "auto",
-      ignoreHover: true,
-    });
+    const previousTrackId = previousTrackIdRef.current;
+    const previousIndex = previousIndexRef.current;
+    const previousLyricsKey = previousLyricsKeyRef.current;
+    const previousLayoutVersion = previousLayoutVersionRef.current;
+    const currentTrackId = currentTrack?.videoId ?? null;
+
+    if (entryAlignmentPendingRef.current) {
+      scheduleAlignment("entry");
+      entryAlignmentPendingRef.current = false;
+    } else if (currentTrackId && currentTrackId !== previousTrackId) {
+      clearManualResumeTimer();
+      isManualScrollModeRef.current = false;
+      scheduleAlignment("track");
+    } else if (lyrics.length > 0 && lyricsKey !== previousLyricsKey) {
+      clearManualResumeTimer();
+      isManualScrollModeRef.current = false;
+      scheduleAlignment("entry");
+    } else if (layoutVersion !== previousLayoutVersion) {
+      scheduleAlignment("layout");
+    } else if (currentIndex !== previousIndex) {
+      scheduleAlignment("playback");
+    }
+
+    previousTrackIdRef.current = currentTrackId;
+    previousIndexRef.current = currentIndex;
+    previousLyricsKeyRef.current = lyricsKey;
+    previousLayoutVersionRef.current = layoutVersion;
   }, [
+    clearManualResumeTimer,
+    hasLyrics,
     currentIndex,
     currentTrack?.videoId,
-    isPlaying,
     isVisible,
     layoutVersion,
     lyrics.length,
-    startAlignmentSession,
+    lyricsKey,
+    scheduleAlignment,
+    stopAlignmentSession,
   ]);
 
   // 使用 ResizeObserver 監聽容器大小變化，動態設置佔位元素高度
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!hasLyrics) {
+      hasVisibleViewportRef.current = false;
+      setContainerHeight((currentHeight) => {
+        if (currentHeight === 0) {
+          return currentHeight;
+        }
+
+        setLayoutVersion((value) => value + 1);
+        return 0;
+      });
+      return;
+    }
+
     const scrollArea = scrollAreaRef.current;
     const content = contentRef.current;
     if (!scrollArea || !content) return;
@@ -276,8 +438,14 @@ export const LyricsContent = ({
     const syncLayout = () => {
       const nextHeight = scrollArea.clientHeight;
       hasVisibleViewportRef.current = nextHeight > 0;
-      setContainerHeight(nextHeight);
-      setLayoutVersion((value) => value + 1);
+      setContainerHeight((currentHeight) => {
+        if (currentHeight === nextHeight) {
+          return currentHeight;
+        }
+
+        setLayoutVersion((value) => value + 1);
+        return nextHeight;
+      });
     };
 
     const resizeObserver = new ResizeObserver(() => {
@@ -285,11 +453,17 @@ export const LyricsContent = ({
     });
 
     syncLayout();
+    const layoutFrameId = window.requestAnimationFrame(syncLayout);
+    const layoutTimeoutId = window.setTimeout(syncLayout, 80);
     resizeObserver.observe(scrollArea);
     resizeObserver.observe(content);
 
-    return () => resizeObserver.disconnect();
-  }, []);
+    return () => {
+      window.cancelAnimationFrame(layoutFrameId);
+      window.clearTimeout(layoutTimeoutId);
+      resizeObserver.disconnect();
+    };
+  }, [hasLyrics, lyricsKey]);
 
   useEffect(() => {
     const scrollArea = scrollAreaRef.current;
@@ -304,55 +478,72 @@ export const LyricsContent = ({
 
     const handleMouseLeave = () => {
       isHoveringLyricsRef.current = false;
-      if (currentIndex >= 0) {
-        startAlignmentSession({
-          delay: 0,
-          duration: 480,
-          initialBehavior: "smooth",
-        });
+      if (isManualScrollModeRef.current) {
+        scheduleManualResume(MANUAL_LEAVE_RESUME_DELAY_MS);
+      } else if (hasLyrics) {
+        scheduleAlignment("manual_resume");
       }
+    };
+
+    const handleWheel = () => {
+      registerManualScrollIntent();
+    };
+
+    const handleTouchStart = () => {
+      registerManualScrollIntent();
+    };
+
+    const handleTouchMove = () => {
+      registerManualScrollIntent();
+    };
+
+    const handleScroll = () => {
+      if (performance.now() < suppressScrollEventsUntilRef.current) {
+        return;
+      }
+
+      registerManualScrollIntent();
     };
 
     scrollArea.addEventListener("mouseenter", handleMouseEnter);
     scrollArea.addEventListener("mouseleave", handleMouseLeave);
+    scrollArea.addEventListener("wheel", handleWheel, { passive: true });
+    scrollArea.addEventListener("touchstart", handleTouchStart, { passive: true });
+    scrollArea.addEventListener("touchmove", handleTouchMove, { passive: true });
+    scrollArea.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
       scrollArea.removeEventListener("mouseenter", handleMouseEnter);
       scrollArea.removeEventListener("mouseleave", handleMouseLeave);
+      scrollArea.removeEventListener("wheel", handleWheel);
+      scrollArea.removeEventListener("touchstart", handleTouchStart);
+      scrollArea.removeEventListener("touchmove", handleTouchMove);
+      scrollArea.removeEventListener("scroll", handleScroll);
     };
-  }, [currentIndex, startAlignmentSession, stopAlignmentSession]);
+  }, [
+    hasLyrics,
+    registerManualScrollIntent,
+    scheduleAlignment,
+    scheduleManualResume,
+    stopAlignmentSession,
+  ]);
 
   useEffect(() => {
     const handleVisibilityReset = () => {
-      if (document.visibilityState === "visible" && currentIndex >= 0 && isVisible) {
-        startAlignmentSession({
-          ignoreHover: false,
-          delay: 0,
-          duration: 1600,
-          initialBehavior: "auto",
-        });
+      if (document.visibilityState === "visible" && hasLyrics && isVisible) {
+        scheduleAlignment("visibility");
       }
     };
 
     const handleWindowFocus = () => {
-      if (currentIndex >= 0 && isVisible) {
-        startAlignmentSession({
-          ignoreHover: false,
-          delay: 0,
-          duration: 1600,
-          initialBehavior: "auto",
-        });
+      if (hasLyrics && isVisible) {
+        scheduleAlignment("focus");
       }
     };
 
     const handlePageShow = () => {
-      if (currentIndex >= 0 && isVisible) {
-        startAlignmentSession({
-          ignoreHover: false,
-          delay: 0,
-          duration: 1800,
-          initialBehavior: "auto",
-        });
+      if (hasLyrics && isVisible) {
+        scheduleAlignment("focus");
       }
     };
 
@@ -365,22 +556,16 @@ export const LyricsContent = ({
       window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener("pageshow", handlePageShow);
 
+      clearManualResumeTimer();
       stopAlignmentSession();
     };
-  }, [currentIndex, isVisible, startAlignmentSession, stopAlignmentSession]);
-
-  useEffect(() => {
-    if (!isVisible || currentIndex < 0) {
-      return;
-    }
-
-    startAlignmentSession({
-      delay: 40,
-      duration: 1200,
-      initialBehavior: "auto",
-      ignoreHover: false,
-    });
-  }, [currentIndex, isVisible, layoutVersion, startAlignmentSession]);
+  }, [
+    clearManualResumeTimer,
+    hasLyrics,
+    isVisible,
+    scheduleAlignment,
+    stopAlignmentSession,
+  ]);
 
   if (lyrics.length === 0) {
     return <Empty title="沒有歌詞" description="此歌曲沒有可用的歌詞" />;
@@ -408,7 +593,10 @@ export const LyricsContent = ({
           const opacity =
             currentIndex < 0 ? 1 : Math.max(0.18, 1 - distance * 0.145);
           const scale = isActive ? 1.028 : Math.max(0.94, 1 - distance * 0.018);
-          const blur = isActive ? 0 : Math.min(2.8, Math.max(0, distance - 1) * 0.72);
+          const blur =
+            isActive || isNearby
+              ? 0
+              : Math.min(1.6, Math.max(0, distance - 1) * 0.36);
           const translateY = isActive ? 0 : Math.min(10, distance * 1.6);
           const backgroundMix = isActive
             ? "color-mix(in srgb, var(--surface-elevated) 66%, var(--accent-soft) 34%)"
@@ -420,6 +608,7 @@ export const LyricsContent = ({
             <div
               key={index}
               ref={isActive ? activeRef : null}
+              data-lyric-index={index}
               style={{
                 opacity,
                 transform: `translateY(${translateY}px) scale(${scale})`,

@@ -29,6 +29,13 @@ export interface PlaybackState {
   lastPlayedTrack: Track | null;
 }
 
+export interface PlaybackProgress {
+  trackId: string | null;
+  position: number; // 當前播放位置（秒）
+  duration: number; // 總時長（秒）
+  isPlaying: boolean;
+}
+
 // WebSocket 訊息類型
 export type WSMessage =
   | { type: "now_playing"; track: Track; position: number; duration: number }
@@ -36,6 +43,7 @@ export type WSMessage =
   | { type: "lyrics"; lyrics: LyricLine[] }
   | { type: "track_ended" }
   | { type: "playback_state"; state: PlaybackState }
+  | { type: "playback_progress"; progress: PlaybackProgress }
   | { type: "play" }
   | { type: "pause" }
   | { type: "skip" }
