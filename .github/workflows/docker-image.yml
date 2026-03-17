@@ -19,6 +19,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Read build metadata
+        id: build_meta
+        run: |
+          app_version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json", "utf8")).version')
+          git_sha_short=$(git rev-parse --short "$GITHUB_SHA")
+          {
+            echo "app_version=$app_version"
+            echo "git_sha_short=$git_sha_short"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -49,6 +59,12 @@ jobs:
           platforms: linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.version=${{ steps.build_meta.outputs.app_version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            APP_VERSION=${{ steps.build_meta.outputs.app_version }}
+            APP_GIT_SHA=${{ steps.build_meta.outputs.git_sha_short }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
