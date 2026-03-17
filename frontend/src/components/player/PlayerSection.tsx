@@ -8,42 +8,40 @@ import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { formatTime } from "@/utils/format";
 import { RadioToggleButton } from "./RadioToggleButton";
+import type { PlayerIdleVariant } from "./NowPlaying";
 
 interface PlayerSectionProps {
-  isIdle?: boolean;
   onSearchClick?: () => void;
   sidebarMode?: boolean;
+  idleVariant?: PlayerIdleVariant;
 }
 
 export const PlayerSection = ({
-  isIdle = false,
   onSearchClick,
   sidebarMode = false,
+  idleVariant = "hero",
 }: PlayerSectionProps) => {
   const currentTrack = usePlayerStore((state) => state.playbackState.currentTrack);
   const nextTrack = usePlayerStore((state) => state.playbackState.queue[0] ?? null);
   const queueLength = usePlayerStore((state) => state.playbackState.queue.length);
-  const shouldShowIdleLayout = isIdle || (!currentTrack && queueLength === 0);
-  const isSidebarPlayer = sidebarMode && !shouldShowIdleLayout;
+  const isPlaybackIdle = !currentTrack && queueLength === 0;
+  const isHeroIdle = isPlaybackIdle && idleVariant === "hero";
+  const isSidebarShell = sidebarMode && !isHeroIdle;
 
   return (
     <Card
       className={cn(
         "desktop-player-shell surface-card-strong min-h-0 overflow-hidden p-0",
-        shouldShowIdleLayout
-          ? "mx-auto w-full max-w-[920px]"
-          : isSidebarPlayer
-            ? "h-full w-full"
-            : "h-full",
+        isHeroIdle ? "mx-auto w-full max-w-[920px]" : "h-full w-full",
       )}
     >
       <div
         className={cn(
           "relative z-10 flex h-full min-h-0 flex-col overflow-y-auto",
-          !shouldShowIdleLayout && "desktop-scrollbar",
-          shouldShowIdleLayout
+          !isPlaybackIdle && "desktop-scrollbar",
+          isHeroIdle
             ? "min-h-[620px] px-8 py-12 lg:px-12 lg:py-14"
-            : isSidebarPlayer
+            : isSidebarShell
               ? "p-5 xl:p-6"
               : "p-5 lg:p-6 xl:p-8",
         )}
@@ -51,9 +49,9 @@ export const PlayerSection = ({
         <div
           className={cn(
             "mx-auto flex w-full min-h-0 flex-col",
-            shouldShowIdleLayout
+            isHeroIdle
               ? "max-w-[760px] justify-center gap-10"
-              : isSidebarPlayer
+              : isSidebarShell
                 ? "max-w-none gap-4 xl:gap-5"
                 : "max-w-[760px] gap-4 lg:gap-5 xl:gap-6",
           )}
@@ -61,16 +59,16 @@ export const PlayerSection = ({
           {/* 當前播放資訊 */}
           <NowPlaying
             onSearchClick={onSearchClick}
-            showIdleState={shouldShowIdleLayout}
-            compact={!shouldShowIdleLayout}
-            sidebarMode={isSidebarPlayer}
+            idleVariant={isPlaybackIdle ? idleVariant : null}
+            compact={!isHeroIdle}
+            sidebarMode={isSidebarShell}
           />
 
-          {!shouldShowIdleLayout ? (
+          {!isPlaybackIdle ? (
             <div
               className={cn(
                 "flex flex-col",
-                isSidebarPlayer ? "gap-4 pb-5 xl:pb-6" : "gap-5 pb-6 xl:gap-6 xl:pb-8",
+                isSidebarShell ? "gap-4 pb-5 xl:pb-6" : "gap-5 pb-6 xl:gap-6 xl:pb-8",
               )}
             >
               {/* 播放進度條 */}
@@ -80,13 +78,13 @@ export const PlayerSection = ({
               <div
                 className={cn(
                   "flex flex-col border-t border-[color:var(--surface-border)]",
-                  isSidebarPlayer ? "gap-4 pt-4" : "gap-4 pt-5 xl:gap-5 xl:pt-6",
+                  isSidebarShell ? "gap-4 pt-4" : "gap-4 pt-5 xl:gap-5 xl:pt-6",
                 )}
               >
                 <div
                   className={cn(
                     "surface-subtle rounded-[28px] border border-[color:var(--dynamic-ring)]",
-                    isSidebarPlayer ? "p-4" : "p-4 xl:p-5",
+                    isSidebarShell ? "p-4" : "p-4 xl:p-5",
                   )}
                 >
                   <div className="space-y-4">
@@ -107,7 +105,7 @@ export const PlayerSection = ({
                       <VolumeControl
                         className={cn(
                           "h-[56px] max-w-none",
-                          isSidebarPlayer ? "min-w-0 w-full" : "xl:min-w-[300px]",
+                          isSidebarShell ? "min-w-0 w-full" : "xl:min-w-[300px]",
                         )}
                       />
                     </div>

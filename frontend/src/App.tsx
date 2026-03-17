@@ -71,7 +71,11 @@ function App() {
           {desktopMode === "library" ? (
             <div className="grid h-full min-h-0 w-full gap-4 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] xl:gap-6 xl:grid-cols-[minmax(340px,400px)_minmax(0,1fr)]">
               <div className="flex h-full min-h-0 flex-col gap-4 xl:gap-6">
-                <PlayerSection sidebarMode onSearchClick={handleSearchOpen} />
+                <PlayerSection
+                  sidebarMode
+                  idleVariant="sidebar"
+                  onSearchClick={handleSearchOpen}
+                />
               </div>
               <div className="h-full min-h-0">
                 <LibraryView />
@@ -79,7 +83,7 @@ function App() {
             </div>
           ) : isDesktopIdle ? (
             <div className="mx-auto flex h-full w-full max-w-[1180px] min-h-0 items-center justify-center">
-              <PlayerSection isIdle onSearchClick={handleSearchOpen} />
+              <PlayerSection idleVariant="hero" onSearchClick={handleSearchOpen} />
             </div>
           ) : (
             <>

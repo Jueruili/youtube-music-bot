@@ -9,16 +9,18 @@ import { Heart, Library, Search, Sparkles } from "lucide-react";
 
 const EMPTY_FAVORITES: Array<{ videoId: string }> = [];
 
+export type PlayerIdleVariant = "hero" | "sidebar";
+
 interface NowPlayingProps {
   onSearchClick?: () => void;
-  showIdleState?: boolean;
+  idleVariant?: PlayerIdleVariant | null;
   compact?: boolean;
   sidebarMode?: boolean;
 }
 
 export const NowPlaying = ({
   onSearchClick,
-  showIdleState = true,
+  idleVariant = "hero",
   compact = false,
   sidebarMode = false,
 }: NowPlayingProps) => {
@@ -33,7 +35,7 @@ export const NowPlaying = ({
   const { showToast } = useToast();
 
   if (!currentTrack) {
-    if (!showIdleState) {
+    if (idleVariant === null) {
       return (
         <div className="flex flex-col items-center gap-6 text-center lg:items-start lg:text-left">
           <Avatar
@@ -54,6 +56,54 @@ export const NowPlaying = ({
               </p>
             </div>
           </div>
+        </div>
+      );
+    }
+
+    if (idleVariant === "sidebar") {
+      return (
+        <div className="flex flex-col gap-5 text-left">
+          <div className="flex items-start gap-4">
+            <Avatar
+              size="lg"
+              className="h-28 w-28 shrink-0 rounded-[24px] border border-[color:var(--dynamic-ring)] bg-[color:color-mix(in_srgb,var(--surface-elevated)_84%,var(--accent-soft)_16%)]"
+              fallback={<Sparkles className="h-10 w-10 text-[var(--text-muted)]" />}
+            />
+            <div className="min-w-0 space-y-3">
+              <span className="inline-flex rounded-full border border-[color:var(--dynamic-ring)] bg-[color:var(--accent-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
+                Ready
+              </span>
+              <div className="space-y-2">
+                <p className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] xl:text-[2rem]">
+                  從資料庫開始播放
+                </p>
+                <p className="text-sm leading-6 text-[var(--text-secondary)]">
+                  搜尋、開啟歌單或從收藏挑一首歌，播放器會保持在左側即時更新。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              onClick={onSearchClick}
+              className="rounded-2xl shadow-[0_20px_34px_-18px_var(--accent-glow)]"
+            >
+              <Search className="h-4 w-4" />
+              搜尋音樂
+            </Button>
+            <div className="inline-flex h-11 items-center gap-2 rounded-2xl border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-4 text-sm font-medium text-[var(--text-secondary)]">
+              <kbd className="inline-flex h-7 min-w-7 items-center justify-center rounded-xl border border-[color:var(--surface-border)] bg-[var(--surface-muted)] px-2 font-mono text-xs">
+                <span className="text-[0.65rem]">⌘</span>K
+              </kbd>
+              快速搜尋
+            </div>
+          </div>
+
+          <p className="text-sm leading-6 text-[var(--text-muted)]">
+            開始播放後，封面、控制與即將播放資訊會在這個側欄持續同步。
+          </p>
         </div>
       );
     }
