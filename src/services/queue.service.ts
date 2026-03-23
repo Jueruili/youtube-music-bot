@@ -3,6 +3,7 @@ import type {
   Track,
   PlaybackState,
   PlaybackProgress,
+  PlaybackSettings,
 } from "../types/index.ts";
 import { getPlayerService } from "./player.service.ts";
 import { getMusicService } from "./music.service.ts";
@@ -24,11 +25,21 @@ type PlayErrorCallback = (payload: {
 }) => void;
 
 const PROGRESS_BROADCAST_INTERVAL_MS = 250;
+const DEFAULT_PLAYBACK_SETTINGS: PlaybackSettings = {
+  crossfadeEnabled: true,
+  crossfadeDurationSeconds: 4,
+};
+const MIN_CROSSFADE_DURATION_SECONDS = 1;
+const MAX_CROSSFADE_DURATION_SECONDS = 8;
+const MIN_CROSSFADE_START_POSITION_SECONDS = 5;
+const CROSSFADE_START_TOLERANCE_SECONDS = 0.35;
+const MAX_CROSSFADE_TRIGGER_LEAD_SECONDS = 1;
 
 class QueueService {
   private static instance: QueueService | undefined;
   private mixRequestId = 0;
   private radioRequestId = 0;
+  private preloadRequestId = 0;
   private queue: Track[] = [];
   private currentTrack: Track | null = null;
   private lastPlayedTrack: Track | null = null;
@@ -36,8 +47,15 @@ class QueueService {
   private currentDuration = 0;
   private isPaused = false;
   private radioEnabled = false;
+  private playbackSettings: PlaybackSettings = {
+    ...DEFAULT_PLAYBACK_SETTINGS,
+  };
   private recentRadioTrackIds: string[] = [];
   private radioFillPromise: Promise<void> | null = null;
+  private preloadPromise: Promise<boolean> | null = null;
+  private preloadTrackId: string | null = null;
+  private crossfadeStartedForTrackId: string | null = null;
+  private crossfadeTransitionPromise: Promise<void> | null = null;
   private lastEofTimestamp = 0; // 記錄 EOF 時間，用於抑制假 pause 事件
   private queueChangeCallbacks: QueueChangeCallback[] = [];
   private stateChangeCallbacks: PlaybackStateCallback[] = [];
@@ -97,6 +115,7 @@ class QueueService {
 
       if (shouldBroadcastProgress) {
         this.broadcastProgress({ force: shouldBroadcastState });
+        void this.maybeStartCrossfade();
       }
     });
   }
@@ -287,6 +306,7 @@ class QueueService {
     }
 
     this.maybeHydrateRadioQueue();
+    void this.syncNextTrackPreload();
   }
 
   /**
@@ -308,6 +328,8 @@ class QueueService {
 
     // 停止當前播放
     await getPlayerService().stop();
+    this.clearPendingPreload();
+    this.resetCrossfadeState();
 
     // 清空佇列
     this.queue = [];
@@ -353,6 +375,7 @@ class QueueService {
         );
         this.queue.push(...normalizedMixTracks);
         this.broadcastQueueChange();
+        void this.syncNextTrackPreload();
 
         // 若 base song 已結束且播放器空閒，補上的 mix 要能自動接續播放。
         if (this.currentTrack === null && !getPlayerService().isCurrentlyPlaying()) {
@@ -379,6 +402,7 @@ class QueueService {
       this.broadcastQueueChange();
       this.broadcastState();
       this.maybeHydrateRadioQueue();
+      void this.syncNextTrackPreload({ force: true });
     }
   }
 
@@ -409,6 +433,7 @@ class QueueService {
     this.broadcastQueueChange();
     this.broadcastState();
     this.maybeHydrateRadioQueue();
+    void this.syncNextTrackPreload({ force: true });
   }
 
   /**
@@ -420,6 +445,7 @@ class QueueService {
       currentTrack: this.currentTrack?.title ?? "null",
       isPaused: this.isPaused,
     });
+    this.resetCrossfadeState();
 
     if (this.queue.length === 0) {
       if (this.radioEnabled) {
@@ -440,6 +466,7 @@ class QueueService {
         this.lastPlayedTrack = this.currentTrack;
         this.rememberRecentlyPlayed(this.currentTrack.videoId);
       }
+      this.clearPendingPreload();
       this.currentTrack = null;
       this.currentPosition = 0;
       this.currentDuration = 0;
@@ -450,17 +477,29 @@ class QueueService {
     }
 
     const outgoingTrack = this.currentTrack;
+    const nextTrack = this.queue[0]!;
+    const player = getPlayerService();
 
-    // 手動切歌時要先停止舊播放器，再切換 currentTrack，
-    // 否則舊歌在串流解析期間送出的 time-pos 會被誤標成新歌進度。
     if (outgoingTrack) {
       this.lastPlayedTrack = outgoingTrack;
       this.rememberRecentlyPlayed(outgoingTrack.videoId);
-      getPlayerService().stop();
+    }
+
+    let activatedPreloaded = false;
+    if (player.isTrackPreloaded(nextTrack.videoId)) {
+      activatedPreloaded = await player.playPreloaded(nextTrack.videoId);
+    }
+
+    if (!activatedPreloaded && outgoingTrack) {
+      // 手動切歌時要先停止舊播放器，再切換 currentTrack，
+      // 否則舊歌在串流解析期間送出的 time-pos 會被誤標成新歌進度。
+      player.stop();
     }
 
     // 從佇列取出下一首
-    const nextTrack = this.queue.shift()!;
+    this.queue.shift();
+    this.preloadPromise = null;
+    this.preloadTrackId = null;
     this.currentTrack = nextTrack;
     this.currentPosition = 0;
     this.currentDuration = nextTrack.duration;
@@ -471,11 +510,19 @@ class QueueService {
     // 廣播變更
     this.broadcastQueueChange();
     this.broadcastState();
-    this.broadcastTrackLoading(nextTrack);
     this.maybeHydrateRadioQueue();
 
     // 獲取並廣播歌詞
     this.fetchAndBroadcastLyrics();
+
+    if (activatedPreloaded) {
+      this.broadcastProgress({ force: true });
+      this.broadcastTrackReady(nextTrack);
+      void this.syncNextTrackPreload({ force: true });
+      return;
+    }
+
+    this.broadcastTrackLoading(nextTrack);
 
     try {
       log.info("Fetching direct stream URL for playback", {
@@ -487,11 +534,12 @@ class QueueService {
         bitrate: streamResult.bitrate,
         urlLength: streamResult.url.length,
       });
-      await getPlayerService().playUrl(streamResult.url);
+      await player.playUrl(streamResult.url);
       log.info("Playback started successfully via direct stream URL", {
         source: streamResult.source,
       });
       this.broadcastTrackReady(nextTrack);
+      void this.syncNextTrackPreload({ force: true });
     } catch (playError) {
       // Fallback：若直連串流失敗，再退回 mpv 直接處理 YouTube URL。
       log.warn("Direct stream playback failed, falling back to YouTube URL", {
@@ -502,9 +550,10 @@ class QueueService {
       });
 
       try {
-        await getPlayerService().play(nextTrack.videoId);
+        await player.play(nextTrack.videoId);
         log.info("Fallback playback started successfully via YouTube URL");
         this.broadcastTrackReady(nextTrack);
+        void this.syncNextTrackPreload({ force: true });
       } catch (fallbackError) {
         const errorMessage = `Failed to play track: ${nextTrack.title}. Error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`;
 
@@ -528,6 +577,7 @@ class QueueService {
         this.broadcastQueueChange();
         this.broadcastState();
         this.broadcastPlayError(errorMessage, nextTrack);
+        void this.syncNextTrackPreload({ force: true });
 
         // 拋出錯誤，讓調用者知道播放失敗
         throw new Error(errorMessage);
@@ -552,6 +602,7 @@ class QueueService {
     getPlayerService().resume();
     this.broadcastState();
     this.broadcastProgress({ force: true });
+    void this.maybeStartCrossfade();
   }
 
   /**
@@ -589,7 +640,25 @@ class QueueService {
    */
   skip(): void {
     log.info("Skipping current track");
-    this.playNext();
+    void this.playNext();
+  }
+
+  setPlaybackSettings(
+    settings: Partial<PlaybackSettings>,
+  ): PlaybackSettings {
+    const nextSettings = normalizePlaybackSettings({
+      ...this.playbackSettings,
+      ...settings,
+    });
+
+    if (arePlaybackSettingsEqual(this.playbackSettings, nextSettings)) {
+      return { ...this.playbackSettings };
+    }
+
+    this.playbackSettings = nextSettings;
+    this.broadcastState();
+    void this.syncNextTrackPreload({ force: true });
+    return { ...this.playbackSettings };
   }
 
   enableRadio(): void {
@@ -652,6 +721,8 @@ class QueueService {
     this.currentPosition = clampedPosition;
     getPlayerService().seek(clampedPosition);
     this.broadcastProgress({ force: true });
+    this.crossfadeStartedForTrackId = null;
+    void this.maybeStartCrossfade();
   }
 
   /**
@@ -674,6 +745,7 @@ class QueueService {
       queue: [...this.queue],
       radioEnabled: this.radioEnabled,
       lastPlayedTrack: this.lastPlayedTrack,
+      playbackSettings: { ...this.playbackSettings },
     };
   }
 
@@ -692,6 +764,8 @@ class QueueService {
     options: { requestedBy?: Track["requestedBy"] } = {},
   ): Promise<void> {
     await getPlayerService().stop();
+    this.clearPendingPreload();
+    this.resetCrossfadeState();
     const requester = this.resolveRequester(options.requestedBy, null, tracks);
 
     this.queue = tracks.map((track) =>
@@ -738,6 +812,7 @@ class QueueService {
     }
 
     this.maybeHydrateRadioQueue();
+    void this.syncNextTrackPreload();
   }
 
   renameRequesterProfile(profileId: string, profileName: string): void {
@@ -792,6 +867,7 @@ class QueueService {
     this.lastPlayedTrack = renamedLastPlayedTrack;
     this.broadcastQueueChange();
     this.broadcastState();
+    void this.syncNextTrackPreload();
   }
 
   /**
@@ -828,9 +904,215 @@ class QueueService {
       });
   }
 
+  private resetCrossfadeState(): void {
+    this.crossfadeStartedForTrackId = null;
+    this.crossfadeTransitionPromise = null;
+  }
+
+  private clearPendingPreload(trackId?: string): void {
+    this.preloadRequestId += 1;
+    this.preloadPromise = null;
+
+    if (!trackId || this.preloadTrackId === trackId) {
+      this.preloadTrackId = null;
+    }
+
+    getPlayerService().cancelPreload(trackId);
+  }
+
+  private async syncNextTrackPreload(
+    options: { force?: boolean } = {},
+  ): Promise<boolean> {
+    const nextTrack = this.queue[0] ?? null;
+    const player = getPlayerService();
+
+    if (!nextTrack) {
+      this.clearPendingPreload();
+      return false;
+    }
+
+    if (player.isTrackPreloaded(nextTrack.videoId)) {
+      this.preloadTrackId = nextTrack.videoId;
+      return true;
+    }
+
+    if (
+      !options.force &&
+      this.preloadPromise &&
+      this.preloadTrackId === nextTrack.videoId
+    ) {
+      return this.preloadPromise;
+    }
+
+    if (this.preloadTrackId && this.preloadTrackId !== nextTrack.videoId) {
+      this.clearPendingPreload();
+    }
+
+    const requestId = ++this.preloadRequestId;
+    this.preloadTrackId = nextTrack.videoId;
+
+    const request = (async () => {
+      try {
+        log.info("Preloading next track", {
+          videoId: nextTrack.videoId,
+          title: nextTrack.title,
+        });
+
+        const streamResult = await getMusicService().getStreamUrl(nextTrack.videoId);
+        if (
+          requestId !== this.preloadRequestId ||
+          this.queue[0]?.videoId !== nextTrack.videoId
+        ) {
+          return false;
+        }
+
+        const ready = await player.preloadUrl(nextTrack.videoId, streamResult.url);
+        if (
+          !ready ||
+          requestId !== this.preloadRequestId ||
+          this.queue[0]?.videoId !== nextTrack.videoId
+        ) {
+          player.cancelPreload(nextTrack.videoId);
+          return false;
+        }
+
+        this.preloadTrackId = nextTrack.videoId;
+        log.info("Next track preloaded", {
+          videoId: nextTrack.videoId,
+          source: streamResult.source,
+        });
+        return true;
+      } catch (error) {
+        if (requestId === this.preloadRequestId) {
+          log.warn("Failed to preload next track", {
+            error: error instanceof Error ? error.message : String(error),
+            videoId: nextTrack.videoId,
+            title: nextTrack.title,
+          });
+        }
+        return false;
+      } finally {
+        if (requestId === this.preloadRequestId) {
+          this.preloadPromise = null;
+          if (!player.isTrackPreloaded(nextTrack.videoId)) {
+            this.preloadTrackId = null;
+          }
+        }
+      }
+    })();
+
+    this.preloadPromise = request;
+    return request;
+  }
+
+  private async maybeStartCrossfade(): Promise<void> {
+    if (
+      this.crossfadeTransitionPromise ||
+      !this.playbackSettings.crossfadeEnabled ||
+      !this.currentTrack ||
+      this.isPaused
+    ) {
+      return;
+    }
+
+    const nextTrack = this.queue[0] ?? null;
+    if (!nextTrack) {
+      return;
+    }
+
+    const crossfadeDurationSeconds =
+      this.playbackSettings.crossfadeDurationSeconds;
+    const crossfadeTriggerLeadSeconds = Math.min(
+      MAX_CROSSFADE_TRIGGER_LEAD_SECONDS,
+      Math.max(0.25, crossfadeDurationSeconds * 0.25),
+    );
+    const timeRemaining = this.currentDuration - this.currentPosition;
+
+    if (
+      !Number.isFinite(this.currentDuration) ||
+      this.currentDuration <= 0 ||
+      !Number.isFinite(timeRemaining) ||
+      timeRemaining < 0
+    ) {
+      return;
+    }
+
+    if (
+      this.currentPosition <
+      Math.max(MIN_CROSSFADE_START_POSITION_SECONDS, crossfadeDurationSeconds)
+    ) {
+      return;
+    }
+
+    if (
+      timeRemaining >
+      crossfadeDurationSeconds +
+        crossfadeTriggerLeadSeconds +
+        CROSSFADE_START_TOLERANCE_SECONDS
+    ) {
+      return;
+    }
+
+    if (this.crossfadeStartedForTrackId === this.currentTrack.videoId) {
+      return;
+    }
+
+    if (!getPlayerService().isTrackPreloaded(nextTrack.videoId)) {
+      void this.syncNextTrackPreload();
+      return;
+    }
+
+    this.crossfadeStartedForTrackId = this.currentTrack.videoId;
+    this.crossfadeTransitionPromise = this.startCrossfadeToNextTrack(
+      nextTrack,
+    ).finally(() => {
+      this.crossfadeTransitionPromise = null;
+    });
+
+    await this.crossfadeTransitionPromise;
+  }
+
+  private async startCrossfadeToNextTrack(nextTrack: Track): Promise<void> {
+    const outgoingTrack = this.currentTrack;
+    if (!outgoingTrack || this.queue[0]?.videoId !== nextTrack.videoId) {
+      this.crossfadeStartedForTrackId = null;
+      return;
+    }
+
+    const didStart = await getPlayerService().crossfadeToPreloaded(
+      nextTrack.videoId,
+      this.playbackSettings.crossfadeDurationSeconds * 1000,
+    );
+    if (!didStart) {
+      this.crossfadeStartedForTrackId = null;
+      void this.syncNextTrackPreload({ force: true });
+      return;
+    }
+
+    this.lastPlayedTrack = outgoingTrack;
+    this.rememberRecentlyPlayed(outgoingTrack.videoId);
+    this.queue.shift();
+    this.preloadPromise = null;
+    this.preloadTrackId = null;
+    this.currentTrack = nextTrack;
+    this.currentPosition = 0;
+    this.currentDuration = nextTrack.duration;
+    this.isPaused = false;
+    this.crossfadeStartedForTrackId = null;
+
+    this.broadcastQueueChange();
+    this.broadcastState();
+    this.broadcastProgress({ force: true });
+    this.broadcastTrackReady(nextTrack);
+    this.fetchAndBroadcastLyrics();
+    this.maybeHydrateRadioQueue();
+    void this.syncNextTrackPreload({ force: true });
+  }
+
   resetForTests(): void {
     this.mixRequestId = 0;
     this.radioRequestId = 0;
+    this.preloadRequestId = 0;
     this.queue = [];
     this.currentTrack = null;
     this.lastPlayedTrack = null;
@@ -838,8 +1120,15 @@ class QueueService {
     this.currentDuration = 0;
     this.isPaused = false;
     this.radioEnabled = false;
+    this.playbackSettings = {
+      ...DEFAULT_PLAYBACK_SETTINGS,
+    };
     this.recentRadioTrackIds = [];
     this.radioFillPromise = null;
+    this.preloadPromise = null;
+    this.preloadTrackId = null;
+    this.crossfadeStartedForTrackId = null;
+    this.crossfadeTransitionPromise = null;
     this.lastEofTimestamp = 0;
     this.queueChangeCallbacks = [];
     this.stateChangeCallbacks = [];
@@ -855,6 +1144,8 @@ class QueueService {
       clearTimeout(this.pendingProgressTimeout);
       this.pendingProgressTimeout = null;
     }
+
+    getPlayerService().cancelPreload();
   }
 
   private getIsPlaying(): boolean {
@@ -1021,6 +1312,7 @@ class QueueService {
         this.queue.push(...nextTracks);
         this.broadcastQueueChange();
         this.broadcastState();
+        void this.syncNextTrackPreload();
 
         if (
           options.immediatePlayback &&
@@ -1066,6 +1358,32 @@ function isSameProgress(
     left.position === right.position &&
     left.duration === right.duration &&
     left.isPlaying === right.isPlaying
+  );
+}
+
+function normalizePlaybackSettings(
+  settings: PlaybackSettings,
+): PlaybackSettings {
+  const nextDuration = Number.isFinite(settings.crossfadeDurationSeconds)
+    ? Math.round(settings.crossfadeDurationSeconds)
+    : DEFAULT_PLAYBACK_SETTINGS.crossfadeDurationSeconds;
+
+  return {
+    crossfadeEnabled: Boolean(settings.crossfadeEnabled),
+    crossfadeDurationSeconds: Math.max(
+      MIN_CROSSFADE_DURATION_SECONDS,
+      Math.min(MAX_CROSSFADE_DURATION_SECONDS, nextDuration),
+    ),
+  };
+}
+
+function arePlaybackSettingsEqual(
+  left: PlaybackSettings,
+  right: PlaybackSettings,
+): boolean {
+  return (
+    left.crossfadeEnabled === right.crossfadeEnabled &&
+    left.crossfadeDurationSeconds === right.crossfadeDurationSeconds
   );
 }
 

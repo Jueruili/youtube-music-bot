@@ -62,6 +62,10 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     queue: [],
     radioEnabled: false,
     lastPlayedTrack: null,
+    playbackSettings: {
+      crossfadeEnabled: true,
+      crossfadeDurationSeconds: 4,
+    },
   },
   setPlaybackState: (nextState) =>
     set((state) =>
@@ -243,6 +247,10 @@ function isSamePlaybackState(
     left.duration === right.duration &&
     left.volume === right.volume &&
     left.radioEnabled === right.radioEnabled &&
+    left.playbackSettings.crossfadeEnabled ===
+      right.playbackSettings.crossfadeEnabled &&
+    left.playbackSettings.crossfadeDurationSeconds ===
+      right.playbackSettings.crossfadeDurationSeconds &&
     areTracksEqual(left.currentTrack, right.currentTrack) &&
     areTracksEqual(left.lastPlayedTrack, right.lastPlayedTrack) &&
     areQueuesEqual(left.queue, right.queue)

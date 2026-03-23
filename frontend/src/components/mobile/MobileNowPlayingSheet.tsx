@@ -6,6 +6,7 @@ import { useToast } from "@/components/ui/toast";
 import { ProgressBar } from "@/components/player/ProgressBar";
 import { PlaybackControls } from "@/components/player/PlaybackControls";
 import { VolumeControl } from "@/components/player/VolumeControl";
+import { CrossfadeControl } from "@/components/player/CrossfadeControl";
 import { LyricsDisplay } from "@/components/lyrics/LyricsDisplay";
 import { QueueSection } from "@/components/queue/QueueSection";
 import { useAppUiStore } from "@/stores/appUiStore";
@@ -186,6 +187,8 @@ export const MobileNowPlayingSheet = () => {
                     <PlaybackControls />
                   </div>
                 </div>
+
+                <CrossfadeControl compact />
 
                 <VolumeControl className="max-w-none" />
               </div>

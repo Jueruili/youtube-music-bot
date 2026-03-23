@@ -67,6 +67,7 @@ export const LyricsContent = ({
   const previousLayoutVersionRef = useRef(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [layoutVersion, setLayoutVersion] = useState(0);
+  const [manualFocusIndex, setManualFocusIndex] = useState<number | null>(null);
   const hasLyrics = lyrics.length > 0;
   const lyricsKey = `${currentTrack?.videoId ?? "no-track"}::${lyrics.length}::${
     lyrics[0]?.time ?? -1
@@ -160,6 +161,46 @@ export const LyricsContent = ({
       clearTimeout(manualResumeTimeoutRef.current);
       manualResumeTimeoutRef.current = null;
     }
+  }, []);
+
+  const updateManualFocusIndex = useCallback(() => {
+    const scrollArea = scrollAreaRef.current;
+    const content = contentRef.current;
+
+    if (!scrollArea || !content || scrollArea.clientHeight <= 0) {
+      setManualFocusIndex(null);
+      return;
+    }
+
+    const lyricLines =
+      content.querySelectorAll<HTMLDivElement>("[data-lyric-index]");
+    if (lyricLines.length === 0) {
+      setManualFocusIndex(null);
+      return;
+    }
+
+    const viewportCenter = scrollArea.scrollTop + scrollArea.clientHeight / 2;
+    let nextFocusIndex = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    lyricLines.forEach((line) => {
+      const lineIndex = Number(line.dataset.lyricIndex);
+      if (!Number.isFinite(lineIndex)) {
+        return;
+      }
+
+      const lineCenter = line.offsetTop + line.offsetHeight / 2;
+      const distance = Math.abs(lineCenter - viewportCenter);
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        nextFocusIndex = lineIndex;
+      }
+    });
+
+    setManualFocusIndex((currentIndex) =>
+      currentIndex === nextFocusIndex ? currentIndex : nextFocusIndex,
+    );
   }, []);
 
   const startAlignmentSession = useCallback(
@@ -260,6 +301,7 @@ export const LyricsContent = ({
     (duration = MANUAL_RESUME_DURATION_MS) => {
       clearManualResumeTimer();
       isManualScrollModeRef.current = false;
+      setManualFocusIndex(null);
 
       if (!hasLyrics || !isVisible) {
         return;
@@ -292,8 +334,15 @@ export const LyricsContent = ({
 
     stopAlignmentSession();
     isManualScrollModeRef.current = true;
+    updateManualFocusIndex();
     scheduleManualResume();
-  }, [hasLyrics, isVisible, scheduleManualResume, stopAlignmentSession]);
+  }, [
+    hasLyrics,
+    isVisible,
+    scheduleManualResume,
+    stopAlignmentSession,
+    updateManualFocusIndex,
+  ]);
 
   const scheduleAlignment = useCallback(
     (
@@ -368,6 +417,7 @@ export const LyricsContent = ({
       stopAlignmentSession();
       clearManualResumeTimer();
       isManualScrollModeRef.current = false;
+      setManualFocusIndex(null);
       entryAlignmentPendingRef.current = true;
       previousTrackIdRef.current = currentTrack?.videoId ?? null;
       previousIndexRef.current = currentIndex;
@@ -383,17 +433,23 @@ export const LyricsContent = ({
     const currentTrackId = currentTrack?.videoId ?? null;
 
     if (entryAlignmentPendingRef.current) {
+      setManualFocusIndex(null);
       scheduleAlignment("entry");
       entryAlignmentPendingRef.current = false;
     } else if (currentTrackId && currentTrackId !== previousTrackId) {
       clearManualResumeTimer();
       isManualScrollModeRef.current = false;
+      setManualFocusIndex(null);
       scheduleAlignment("track");
     } else if (lyrics.length > 0 && lyricsKey !== previousLyricsKey) {
       clearManualResumeTimer();
       isManualScrollModeRef.current = false;
+      setManualFocusIndex(null);
       scheduleAlignment("entry");
     } else if (layoutVersion !== previousLayoutVersion) {
+      if (isManualScrollModeRef.current) {
+        updateManualFocusIndex();
+      }
       scheduleAlignment("layout");
     } else if (currentIndex !== previousIndex) {
       scheduleAlignment("playback");
@@ -414,6 +470,7 @@ export const LyricsContent = ({
     lyricsKey,
     scheduleAlignment,
     stopAlignmentSession,
+    updateManualFocusIndex,
   ]);
 
   // 使用 ResizeObserver 監聽容器大小變化，動態設置佔位元素高度
@@ -573,6 +630,8 @@ export const LyricsContent = ({
 
   // 佔位元素高度為容器高度的一半，使歌詞可以置中顯示
   const spacerHeight = containerHeight / 2;
+  const isManualReadableMode = manualFocusIndex !== null;
+  const visualFocusIndex = isManualReadableMode ? manualFocusIndex : currentIndex;
 
   return (
     <div className={cn("relative h-full min-h-0", className)}>
@@ -587,22 +646,56 @@ export const LyricsContent = ({
         <div style={{ height: spacerHeight }} />
         {lyrics.map((line, index) => {
           const distance =
-            currentIndex < 0 ? 0 : Math.abs(index - currentIndex);
+            visualFocusIndex < 0 ? 0 : Math.abs(index - visualFocusIndex);
           const isActive = index === currentIndex;
-          const isNearby = distance <= 1;
-          const opacity =
-            currentIndex < 0 ? 1 : Math.max(0.18, 1 - distance * 0.145);
-          const scale = isActive ? 1.028 : Math.max(0.94, 1 - distance * 0.018);
-          const blur =
-            isActive || isNearby
+          const isNearby = distance <= (isManualReadableMode ? 2 : 1);
+          const opacity = isManualReadableMode
+            ? visualFocusIndex < 0
+              ? 1
+              : distance === 0
+                ? 1
+                : distance === 1
+                  ? 0.94
+                  : distance === 2
+                    ? 0.84
+                    : Math.max(0.36, 0.74 - (distance - 2) * 0.08)
+            : currentIndex < 0
+              ? 1
+              : Math.max(0.18, 1 - distance * 0.145);
+          const scale = isManualReadableMode
+            ? distance === 0
+              ? 1.02
+              : distance <= 2
+                ? 1
+                : Math.max(0.965, 1 - distance * 0.01)
+            : isActive
+              ? 1.028
+              : Math.max(0.94, 1 - distance * 0.018);
+          const blur = isManualReadableMode
+            ? distance <= 2
+              ? 0
+              : Math.min(0.7, Math.max(0, distance - 2) * 0.14)
+            : isActive || isNearby
               ? 0
               : Math.min(1.6, Math.max(0, distance - 1) * 0.36);
-          const translateY = isActive ? 0 : Math.min(10, distance * 1.6);
-          const backgroundMix = isActive
-            ? "color-mix(in srgb, var(--surface-elevated) 66%, var(--accent-soft) 34%)"
-            : isNearby
-              ? "color-mix(in srgb, var(--surface-elevated) 76%, var(--accent-soft) 18%)"
-              : "transparent";
+          const translateY = isManualReadableMode
+            ? distance === 0
+              ? 0
+              : Math.min(6, distance * 0.85)
+            : isActive
+              ? 0
+              : Math.min(10, distance * 1.6);
+          const backgroundMix = isManualReadableMode
+            ? distance === 0
+              ? "color-mix(in srgb, var(--surface-elevated) 64%, var(--accent-soft) 36%)"
+              : distance <= 2
+                ? "color-mix(in srgb, var(--surface-elevated) 82%, var(--accent-soft) 18%)"
+                : "transparent"
+            : isActive
+              ? "color-mix(in srgb, var(--surface-elevated) 66%, var(--accent-soft) 34%)"
+              : isNearby
+                ? "color-mix(in srgb, var(--surface-elevated) 76%, var(--accent-soft) 18%)"
+                : "transparent";
 
           return (
             <div

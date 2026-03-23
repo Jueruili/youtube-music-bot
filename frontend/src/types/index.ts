@@ -65,6 +65,11 @@ export interface LyricLine {
   time: number; // 秒
 }
 
+export interface PlaybackSettings {
+  crossfadeEnabled: boolean;
+  crossfadeDurationSeconds: number;
+}
+
 // 播放狀態
 export interface PlaybackState {
   isPlaying: boolean;
@@ -75,6 +80,7 @@ export interface PlaybackState {
   queue: Track[];
   radioEnabled: boolean;
   lastPlayedTrack: Track | null;
+  playbackSettings: PlaybackSettings;
 }
 
 export interface PlaybackProgress {

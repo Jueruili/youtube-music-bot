@@ -643,9 +643,16 @@ function parseLrc(lrc: string): LyricLine[] {
   return lines.sort((a, b) => a.time - b.time);
 }
 
+const STREAM_URL_CACHE_TTL_MS = 10 * 60 * 1000;
+
 class MusicService {
   private searchCache = new Map<string, SearchResult[]>();
   private lyricsCache = new Map<string, LyricLine[]>();
+  private streamUrlCache = new Map<
+    string,
+    { result: StreamUrlResult; expiresAt: number }
+  >();
+  private streamUrlInFlight = new Map<string, Promise<StreamUrlResult>>();
 
   async search(query: string, limit: number = 20): Promise<SearchResult[]> {
     const normalizedQuery = query.trim();
@@ -1064,6 +1071,39 @@ class MusicService {
    * @see https://github.com/LuanRT/YouTube.js/issues/1123
    */
   async getStreamUrl(videoId: string): Promise<StreamUrlResult> {
+    const cachedEntry = this.streamUrlCache.get(videoId);
+    if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+      return {
+        ...cachedEntry.result,
+      };
+    }
+
+    if (cachedEntry) {
+      this.streamUrlCache.delete(videoId);
+    }
+
+    const inFlight = this.streamUrlInFlight.get(videoId);
+    if (inFlight) {
+      return inFlight.then((result) => ({ ...result }));
+    }
+
+    const request = this.extractStreamUrl(videoId)
+      .then((result) => {
+        this.streamUrlCache.set(videoId, {
+          result,
+          expiresAt: Date.now() + STREAM_URL_CACHE_TTL_MS,
+        });
+        return result;
+      })
+      .finally(() => {
+        this.streamUrlInFlight.delete(videoId);
+      });
+
+    this.streamUrlInFlight.set(videoId, request);
+    return request.then((result) => ({ ...result }));
+  }
+
+  private async extractStreamUrl(videoId: string): Promise<StreamUrlResult> {
     log.info("Attempting stream URL extraction", { videoId });
 
     const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;

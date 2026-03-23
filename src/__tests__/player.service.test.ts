@@ -5,6 +5,22 @@ import {
   getPlayerService,
 } from "../services/player.service.ts";
 
+function createSession(process: ChildProcess) {
+  return {
+    id: 1,
+    purpose: "active" as const,
+    source: { type: "stream" as const, value: "https://example.com/audio" },
+    process,
+    ipcSocket: null,
+    ipcPath: "/tmp/test-mpv.sock",
+    ipcConnectRetries: 0,
+    eofHandled: false,
+    ready: true,
+    trackId: "track-1",
+    confirmation: null,
+  };
+}
+
 describe("PlayerService - seek functionality", () => {
   let playerService: ReturnType<typeof getPlayerService>;
 
@@ -119,23 +135,22 @@ describe("PlayerService - seek functionality", () => {
       } as unknown as ChildProcess;
       const eventSpy = mock(() => {});
       const player = playerService as unknown as {
-        mpvProcess: ChildProcess | null;
-        eofHandled: boolean;
-        handleSpawnedProcessExit: (
-          process: ChildProcess,
+        activeSession: ReturnType<typeof createSession> | null;
+        handleSessionExit: (
+          session: ReturnType<typeof createSession>,
           code: number | null,
           signal: NodeJS.Signals | null,
-          handleSuccess: () => void,
-          handleError: (error: Error) => void,
+          settleReady: (ready: boolean) => void,
+          rejectReady: (error: Error) => void,
         ) => void;
       };
+      const session = createSession(fakeProcess);
 
       playerService.onEvent(eventSpy);
-      player.mpvProcess = fakeProcess;
-      player.eofHandled = false;
+      player.activeSession = session;
 
       playerService.stop();
-      player.handleSpawnedProcessExit(fakeProcess, 0, null, () => {}, () => {});
+      player.handleSessionExit(session, 0, null, () => {}, () => {});
 
       expect(eventSpy).not.toHaveBeenCalled();
     });
@@ -144,22 +159,21 @@ describe("PlayerService - seek functionality", () => {
       const fakeProcess = {} as ChildProcess;
       const eventSpy = mock(() => {});
       const player = playerService as unknown as {
-        mpvProcess: ChildProcess | null;
-        eofHandled: boolean;
-        handleSpawnedProcessExit: (
-          process: ChildProcess,
+        activeSession: ReturnType<typeof createSession> | null;
+        handleSessionExit: (
+          session: ReturnType<typeof createSession>,
           code: number | null,
           signal: NodeJS.Signals | null,
-          handleSuccess: () => void,
-          handleError: (error: Error) => void,
+          settleReady: (ready: boolean) => void,
+          rejectReady: (error: Error) => void,
         ) => void;
       };
+      const session = createSession(fakeProcess);
 
       playerService.onEvent(eventSpy);
-      player.mpvProcess = fakeProcess;
-      player.eofHandled = false;
+      player.activeSession = session;
 
-      player.handleSpawnedProcessExit(fakeProcess, 0, null, () => {}, () => {});
+      player.handleSessionExit(session, 0, null, () => {}, () => {});
 
       expect(eventSpy).toHaveBeenCalledWith({ eof: true });
     });
@@ -167,70 +181,106 @@ describe("PlayerService - seek functionality", () => {
 
   describe("playback confirmation", () => {
     test("should wait for a positive time-pos before confirming playback", () => {
-      const fakeProcess = {} as ChildProcess;
+      const fakeProcess = {
+        kill: mock(() => true),
+      } as unknown as ChildProcess;
+      const session = createSession(fakeProcess);
       const player = playerService as unknown as {
-        beginPlaybackConfirmation: (
-          process: ChildProcess,
-          handleSuccess: () => void,
-          handleError: (error: Error) => void,
+        activeSession: ReturnType<typeof createSession> | null;
+        beginSessionConfirmation: (
+          session: ReturnType<typeof createSession>,
+          mode: "playback" | "preload",
+          settle: (ready: boolean) => void,
+          reject: (error: Error) => void,
         ) => void;
-        handlePropertyChange: (message: {
-          name: string;
-          data: number | boolean;
-        }) => void;
+        handlePropertyChange: (
+          session: ReturnType<typeof createSession>,
+          message: {
+            name: string;
+            data: number | boolean;
+          },
+        ) => void;
       };
-      const handleSuccess = mock(() => {});
-      const handleError = mock((_error: Error) => {});
+      const settle = mock((_ready: boolean) => {});
+      const reject = mock((_error: Error) => {});
 
-      player.beginPlaybackConfirmation(
-        fakeProcess,
-        handleSuccess,
-        handleError,
-      );
-      player.handlePropertyChange({ name: "time-pos", data: 0 });
-      player.handlePropertyChange({ name: "time-pos", data: 0.25 });
+      player.activeSession = session;
+      player.beginSessionConfirmation(session, "playback", settle, reject);
+      player.handlePropertyChange(session, {
+        name: "time-pos",
+        data: 0,
+      });
+      player.handlePropertyChange(session, {
+        name: "time-pos",
+        data: 0.25,
+      });
 
-      expect(handleSuccess).toHaveBeenCalledTimes(1);
-      expect(handleError).not.toHaveBeenCalled();
+      expect(settle).toHaveBeenCalledTimes(1);
+      expect(settle).toHaveBeenCalledWith(true);
+      expect(reject).not.toHaveBeenCalled();
     });
 
     test("should reject when mpv exits before playback is confirmed", () => {
       const fakeProcess = {} as ChildProcess;
+      const session = createSession(fakeProcess);
       const player = playerService as unknown as {
-        beginPlaybackConfirmation: (
-          process: ChildProcess,
-          handleSuccess: () => void,
-          handleError: (error: Error) => void,
+        beginSessionConfirmation: (
+          session: ReturnType<typeof createSession>,
+          mode: "playback" | "preload",
+          settle: (ready: boolean) => void,
+          reject: (error: Error) => void,
         ) => void;
-        handleSpawnedProcessExit: (
-          process: ChildProcess,
+        handleSessionExit: (
+          session: ReturnType<typeof createSession>,
           code: number | null,
           signal: NodeJS.Signals | null,
-          handleSuccess: () => void,
-          handleError: (error: Error) => void,
+          settleReady: (ready: boolean) => void,
+          rejectReady: (error: Error) => void,
         ) => void;
       };
-      const handleSuccess = mock(() => {});
-      const handleError = mock((_error: Error) => {});
+      const settle = mock((_ready: boolean) => {});
+      const reject = mock((_error: Error) => {});
 
-      player.beginPlaybackConfirmation(
-        fakeProcess,
-        handleSuccess,
-        handleError,
-      );
-      player.handleSpawnedProcessExit(
-        fakeProcess,
-        2,
-        null,
-        handleSuccess,
-        handleError,
-      );
+      player.beginSessionConfirmation(session, "playback", settle, reject);
+      player.handleSessionExit(session, 2, null, settle, reject);
 
-      expect(handleSuccess).not.toHaveBeenCalled();
-      expect(handleError).toHaveBeenCalledTimes(1);
-      const firstError = handleError.mock.calls[0]?.[0];
+      expect(settle).not.toHaveBeenCalled();
+      expect(reject).toHaveBeenCalledTimes(1);
+      const firstError = reject.mock.calls[0]?.[0];
       expect(firstError).toBeInstanceOf(Error);
       expect(firstError?.message).toBe("mpv exited with code 2");
+    });
+
+    test("should confirm preload sessions when duration metadata arrives", () => {
+      const fakeProcess = {} as ChildProcess;
+      const session = createSession(fakeProcess);
+      const player = playerService as unknown as {
+        beginSessionConfirmation: (
+          session: ReturnType<typeof createSession>,
+          mode: "playback" | "preload",
+          settle: (ready: boolean) => void,
+          reject: (error: Error) => void,
+        ) => void;
+        handlePropertyChange: (
+          session: ReturnType<typeof createSession>,
+          message: {
+            name: string;
+            data: number | boolean;
+          },
+        ) => void;
+      };
+      const settle = mock((_ready: boolean) => {});
+      const reject = mock((_error: Error) => {});
+
+      player.beginSessionConfirmation(session, "preload", settle, reject);
+      player.handlePropertyChange(session, {
+        name: "duration",
+        data: 215,
+      });
+
+      expect(settle).toHaveBeenCalledTimes(1);
+      expect(settle).toHaveBeenCalledWith(true);
+      expect(reject).not.toHaveBeenCalled();
     });
   });
 });

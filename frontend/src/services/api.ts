@@ -1,6 +1,7 @@
 import type {
   AlbumDetails,
   ApiResponse,
+  PlaybackSettings,
   PlaybackState,
   SearchResult,
   Track,
@@ -145,6 +146,15 @@ class ApiService {
     return this.request<void>("/volume", {
       method: "POST",
       body: JSON.stringify({ volume }),
+    });
+  }
+
+  async updatePlaybackSettings(
+    settings: PlaybackSettings,
+  ): Promise<ApiResponse<PlaybackSettings>> {
+    return this.request<PlaybackSettings>("/playback/settings", {
+      method: "POST",
+      body: JSON.stringify(settings),
     });
   }
 

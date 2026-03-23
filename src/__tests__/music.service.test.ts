@@ -6,7 +6,7 @@ import {
   normalizeMusicSearchItem,
   resolveCollectionArtist,
 } from "../services/music.service.ts";
-import type { SearchResult } from "../types/index.ts";
+import type { SearchResult, StreamUrlResult } from "../types/index.ts";
 
 type RestorableMethod = {
   target: Record<string, unknown>;
@@ -280,5 +280,69 @@ describe("MusicService mix normalization", () => {
         },
       },
     ]);
+  });
+
+  test("should reuse in-flight stream URL extraction for the same video id", async () => {
+    const musicService = getMusicService() as unknown as {
+      getStreamUrl: (videoId: string) => Promise<StreamUrlResult>;
+      extractStreamUrl: (videoId: string) => Promise<StreamUrlResult>;
+    };
+    let resolveExtraction:
+      | ((result: StreamUrlResult) => void)
+      | undefined;
+    let extractionCalls = 0;
+
+    stubMethod(
+      musicService,
+      "extractStreamUrl",
+      (() => {
+        extractionCalls += 1;
+        return new Promise<StreamUrlResult>((resolve) => {
+          resolveExtraction = resolve;
+        });
+      }) as typeof musicService.extractStreamUrl,
+    );
+
+    const firstRequest = musicService.getStreamUrl("track-1");
+    const secondRequest = musicService.getStreamUrl("track-1");
+
+    if (resolveExtraction) {
+      resolveExtraction({
+        url: "https://example.com/track-1",
+        source: "yt-dlp",
+      });
+    }
+
+    const [first, second] = await Promise.all([firstRequest, secondRequest]);
+
+    expect(extractionCalls).toBe(1);
+    expect(first).toEqual(second);
+  });
+
+  test("should cache resolved stream URLs for repeat lookups", async () => {
+    const musicService = getMusicService() as unknown as {
+      getStreamUrl: (videoId: string) => Promise<StreamUrlResult>;
+      extractStreamUrl: (videoId: string) => Promise<StreamUrlResult>;
+    };
+    let extractionCalls = 0;
+
+    stubMethod(
+      musicService,
+      "extractStreamUrl",
+      (async (videoId: string) => {
+        extractionCalls += 1;
+        return {
+          url: `https://example.com/${videoId}`,
+          source: "youtubei",
+          bitrate: 128000,
+        };
+      }) as typeof musicService.extractStreamUrl,
+    );
+
+    const first = await musicService.getStreamUrl("track-2");
+    const second = await musicService.getStreamUrl("track-2");
+
+    expect(extractionCalls).toBe(1);
+    expect(first).toEqual(second);
   });
 });

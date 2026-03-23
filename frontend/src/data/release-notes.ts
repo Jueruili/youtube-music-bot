@@ -5,6 +5,17 @@ export interface ReleaseNotesEntry {
 }
 
 const releaseNotesByVersion: Record<string, ReleaseNotesEntry> = {
+  "0.6.0": {
+    version: "0.6.0",
+    title: "性能提升與無縫播放",
+    highlights: [
+      "新增下一首預加載機制，降低切歌時等待串流解析的停頓感。",
+      "播放器支援可調整秒數的 Crossfade，並優化淡入淡出曲線，讓歌曲之間的銜接更自然。",
+      "播放器介面新增 Crossfade 開關與秒數控制，桌面與手機版都可即時同步。",
+      "手動捲動歌詞時會降低模糊並提升鄰近行可讀性，方便邊看邊找段落。",
+      "播放核心加入更積極的 stream URL 快取與重用，減少重複解析負擔。",
+    ],
+  },
   "0.5.0": {
     version: "0.5.0",
     title: "搜尋與播放切換修正",

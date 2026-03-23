@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { ApiResponse, Track } from "../types/index.ts";
+import type { ApiResponse, PlaybackSettings, Track } from "../types/index.ts";
 import { getMusicService } from "../services/music.service.ts";
 import { getQueueService } from "../services/queue.service.ts";
 import {
@@ -1073,6 +1073,47 @@ api.post("/volume", async (c) => {
       {
         success: false,
         error: "Failed to set volume",
+      },
+      500,
+    );
+  }
+});
+
+/**
+ * POST /api/playback/settings
+ * 更新播放設定
+ */
+api.post("/playback/settings", async (c) => {
+  try {
+    const body = await c.req.json<PlaybackSettings>();
+
+    if (
+      typeof body.crossfadeEnabled !== "boolean" ||
+      typeof body.crossfadeDurationSeconds !== "number" ||
+      !Number.isFinite(body.crossfadeDurationSeconds)
+    ) {
+      return c.json<ApiResponse>(
+        {
+          success: false,
+          error: "Playback settings payload is invalid",
+        },
+        400,
+      );
+    }
+
+    const queueService = getQueueService();
+    const playbackSettings = queueService.setPlaybackSettings(body);
+
+    return c.json<ApiResponse<PlaybackSettings>>({
+      success: true,
+      data: playbackSettings,
+    });
+  } catch (error) {
+    console.error("Failed to update playback settings:", error);
+    return c.json<ApiResponse>(
+      {
+        success: false,
+        error: "Failed to update playback settings",
       },
       500,
     );

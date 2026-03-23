@@ -3,6 +3,7 @@ import { NowPlaying } from "./NowPlaying";
 import { ProgressBar } from "./ProgressBar";
 import { PlaybackControls } from "./PlaybackControls";
 import { VolumeControl } from "./VolumeControl";
+import { CrossfadeControl } from "./CrossfadeControl";
 import { usePlayerStore } from "@/stores/playerStore";
 import { cn } from "@/lib/utils";
 import { OpenAlbumButton } from "@/components/album/OpenAlbumButton";
@@ -109,6 +110,13 @@ export const PlayerSection = ({
                           isSidebarShell ? "min-w-0 w-full" : "xl:min-w-[300px]",
                         )}
                       />
+                    </div>
+
+                    <div>
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
+                        Crossfade
+                      </p>
+                      <CrossfadeControl />
                     </div>
                   </div>
                 </div>

@@ -90,6 +90,26 @@ describe("QueueService - seekTo functionality", () => {
       const state = queueService.getState();
       expect(state.volume).toBe(80);
     });
+
+    test("should expose default playback settings", () => {
+      expect(queueService.getState().playbackSettings).toEqual({
+        crossfadeEnabled: true,
+        crossfadeDurationSeconds: 4,
+      });
+    });
+
+    test("should normalize playback settings updates", () => {
+      const nextSettings = queueService.setPlaybackSettings({
+        crossfadeEnabled: false,
+        crossfadeDurationSeconds: 99,
+      });
+
+      expect(nextSettings).toEqual({
+        crossfadeEnabled: false,
+        crossfadeDurationSeconds: 8,
+      });
+      expect(queueService.getState().playbackSettings).toEqual(nextSettings);
+    });
   });
 
   describe("playback controls", () => {

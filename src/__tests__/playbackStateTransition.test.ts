@@ -27,6 +27,10 @@ function createPlaybackState(
     queue: [],
     radioEnabled: false,
     lastPlayedTrack: null,
+    playbackSettings: {
+      crossfadeEnabled: true,
+      crossfadeDurationSeconds: 4,
+    },
     ...overrides,
   };
 }
