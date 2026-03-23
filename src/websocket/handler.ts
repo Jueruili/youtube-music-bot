@@ -191,6 +191,14 @@ export function initializeWebSocket(): void {
     });
   });
 
+  queueService.onPlayError(({ error, track }) => {
+    broadcast({
+      type: "play_error",
+      error,
+      track,
+    });
+  });
+
   websocketInitialized = true;
   log.info("WebSocket broadcasting initialized");
 }

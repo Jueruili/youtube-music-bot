@@ -99,7 +99,7 @@ describe("QueueService radio mode", () => {
     stubMethod(musicService, "getStreamUrl", async (videoId: string) => {
       return {
         url: `https://stream/${videoId}`,
-        source: "youtube-ext" as const,
+        source: "youtubei" as const,
       };
     });
     stubMethod(musicService, "getLyrics", async () => []);
@@ -138,7 +138,7 @@ describe("QueueService radio mode", () => {
     stubMethod(musicService, "getStreamUrl", async (videoId: string) => {
       return {
         url: `https://stream/${videoId}`,
-        source: "youtube-ext" as const,
+        source: "youtubei" as const,
       };
     });
     stubMethod(musicService, "getLyrics", async () => []);
@@ -177,7 +177,7 @@ describe("QueueService radio mode", () => {
     stubMethod(musicService, "getStreamUrl", async (videoId: string) => {
       return {
         url: `https://stream/${videoId}`,
-        source: "youtube-ext" as const,
+        source: "youtubei" as const,
       };
     });
     stubMethod(musicService, "getLyrics", async () => []);

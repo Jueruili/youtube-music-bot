@@ -14,8 +14,10 @@ import { useToast } from "@/components/ui/toast";
 import { usePlayerStore } from "@/stores/playerStore";
 import { getCurrentRequester, useLibraryStore } from "@/stores/libraryStore";
 import { api } from "@/services/api";
-import type { Track } from "@/types";
+import type { CollectionSearchResult, Track } from "@/types";
 import { X } from "lucide-react";
+
+const EMPTY_FAVORITES: Array<{ videoId: string }> = [];
 
 interface SearchModalProps {
   open: boolean;
@@ -26,16 +28,25 @@ export const SearchModal = ({ open, onOpenChange }: SearchModalProps) => {
   const [isSearching, setIsSearching] = useState(false);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [creatingMixId, setCreatingMixId] = useState<string | null>(null);
+  const [addingCollectionId, setAddingCollectionId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const searchResults = usePlayerStore((state) => state.searchResults);
   const setSearchResults = usePlayerStore((state) => state.setSearchResults);
+  const libraryReady = useLibraryStore((state) => state.ready);
+  const favorites = useLibraryStore(
+    (state) => state.snapshot?.favorites ?? EMPTY_FAVORITES,
+  );
   const openPlaylistPicker = useLibraryStore((state) => state.openPlaylistPicker);
   const saveMix = useLibraryStore((state) => state.saveMix);
+  const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const currentRequester = useLibraryStore((state) =>
     getCurrentRequester(state.snapshot),
   );
   const { showToast } = useToast();
+  const favoriteTrackIds = new Set(
+    favorites.map((favorite) => favorite.videoId),
+  );
 
   useEffect(() => {
     if (!open) {
@@ -64,7 +75,7 @@ export const SearchModal = ({ open, onOpenChange }: SearchModalProps) => {
       if (response.success && response.data) {
         setSearchResults(response.data);
         if (response.data.length === 0) {
-          showToast({ message: "沒有找到相關歌曲", type: "info" });
+          showToast({ message: "沒有找到相關內容", type: "info" });
         }
       } else {
         showToast({ message: response.error || "搜尋失敗", type: "error" });
@@ -104,6 +115,34 @@ export const SearchModal = ({ open, onOpenChange }: SearchModalProps) => {
     }
   };
 
+  const handleAddCollection = async (result: CollectionSearchResult) => {
+    setAddingCollectionId(result.id);
+    usePlayerStore
+      .getState()
+      .setLoadingTrack(true, `正在加入「${result.title}」的 ${result.tracks.length} 首歌曲...`);
+
+    try {
+      const response = await api.addTracksToQueue(result.tracks, currentRequester);
+      if (response.success && response.data) {
+        showToast({
+          message: `已加入 ${response.data.count} 首歌曲`,
+          type: "success",
+        });
+      } else {
+        showToast({
+          message: response.error || "加入整組內容失敗",
+          type: "error",
+        });
+        usePlayerStore.getState().setLoadingTrack(false);
+      }
+    } catch {
+      showToast({ message: "加入整組內容發生錯誤", type: "error" });
+      usePlayerStore.getState().setLoadingTrack(false);
+    } finally {
+      setAddingCollectionId(null);
+    }
+  };
+
   const handleCreateMix = async (track: Track) => {
     setCreatingMixId(track.videoId);
     usePlayerStore.getState().setLoadingTrack(true, "正在取得推薦歌曲...");
@@ -132,6 +171,34 @@ export const SearchModal = ({ open, onOpenChange }: SearchModalProps) => {
     }
   };
 
+  const handleAddToPlaylist = (track: Track) => {
+    if (!libraryReady) {
+      showToast({ message: "媒體庫正在初始化", type: "info" });
+      return;
+    }
+
+    openPlaylistPicker(track);
+  };
+
+  const handleToggleFavorite = async (track: Track) => {
+    if (!libraryReady) {
+      showToast({ message: "媒體庫正在初始化", type: "info" });
+      return;
+    }
+
+    const wasFavorite = favoriteTrackIds.has(track.videoId);
+
+    try {
+      await toggleFavorite(track);
+      showToast({
+        message: wasFavorite ? "已移除收藏" : "已加入收藏",
+        type: "success",
+      });
+    } catch {
+      showToast({ message: "收藏更新失敗", type: "error" });
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[min(90vh,960px)] w-[min(98vw,1360px)] max-w-[1360px] flex-col p-0">
@@ -142,7 +209,7 @@ export const SearchModal = ({ open, onOpenChange }: SearchModalProps) => {
                 搜尋音樂
               </DialogTitle>
               <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                找到想播的歌，直接加入佇列或建立 Mix。
+                可搜尋關鍵字，或直接貼上 YouTube / YouTube Music 連結。
               </p>
             </div>
             <DialogClose
@@ -170,20 +237,30 @@ export const SearchModal = ({ open, onOpenChange }: SearchModalProps) => {
               <div className="space-y-3">
                 {searchResults.map((result) => (
                   <SearchResultItem
-                    key={result.videoId}
+                    key={`${result.kind}:${result.id}`}
                     result={result}
                     onAdd={handleAddToQueue}
                     onCreateMix={handleCreateMix}
-                    onAddToPlaylist={openPlaylistPicker}
-                    isAdding={addingId === result.videoId}
-                    isCreatingMix={creatingMixId === result.videoId}
+                    onAddToPlaylist={handleAddToPlaylist}
+                    onToggleFavorite={handleToggleFavorite}
+                    onAddCollection={handleAddCollection}
+                    favoriteTrackIds={favoriteTrackIds}
+                    favoriteDisabled={!libraryReady}
+                    isAdding={result.kind === "track" && addingId === result.id}
+                    isCreatingMix={
+                      result.kind === "track" && creatingMixId === result.id
+                    }
+                    isCollectionPending={
+                      result.kind !== "track" && addingCollectionId === result.id
+                    }
+                    pendingTrackId={addingId}
                   />
                 ))}
               </div>
             ) : (
               <Empty
                 title="尚無搜尋結果"
-                description="輸入關鍵字開始搜尋音樂"
+                description="輸入關鍵字或貼上 YouTube 連結開始搜尋"
               />
             )}
           </div>

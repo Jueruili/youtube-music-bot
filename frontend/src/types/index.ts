@@ -10,6 +10,8 @@ export interface TrackAlbum {
   name: string;
 }
 
+export type SearchCollectionKind = "album" | "playlist" | "mix";
+
 // 歌曲資訊
 export interface Track {
   videoId: string;
@@ -32,6 +34,30 @@ export interface AlbumDetails {
   thumbnail?: string;
   tracks: Track[];
 }
+
+export interface TrackSearchResult {
+  kind: "track";
+  id: string;
+  title: string;
+  artist: string;
+  thumbnail?: string;
+  duration: number;
+  track: Track;
+}
+
+export interface CollectionSearchResult {
+  kind: SearchCollectionKind;
+  id: string;
+  title: string;
+  artist: string;
+  thumbnail?: string;
+  trackCount: number;
+  tracks: Track[];
+  truncated: boolean;
+  subtitle?: string;
+}
+
+export type SearchResult = TrackSearchResult | CollectionSearchResult;
 
 // 歌詞行
 export interface LyricLine {
@@ -66,6 +92,7 @@ export type WSMessage =
   | { type: "track_ended" }
   | { type: "playback_state"; state: PlaybackState }
   | { type: "playback_progress"; progress: PlaybackProgress }
+  | { type: "play_error"; error: string; track: Track | null }
   | { type: "play" }
   | { type: "pause" }
   | { type: "skip" }

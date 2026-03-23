@@ -13,6 +13,10 @@ type QueueChangeCallback = (queue: Track[]) => void;
 type PlaybackStateCallback = (state: PlaybackState) => void;
 type PlaybackProgressCallback = (progress: PlaybackProgress) => void;
 type LyricsChangeCallback = (lyrics: any[]) => void;
+type PlayErrorCallback = (payload: {
+  error: string;
+  track: Track | null;
+}) => void;
 
 const PROGRESS_BROADCAST_INTERVAL_MS = 250;
 
@@ -34,6 +38,7 @@ class QueueService {
   private stateChangeCallbacks: PlaybackStateCallback[] = [];
   private progressChangeCallbacks: PlaybackProgressCallback[] = [];
   private lyricsChangeCallbacks: LyricsChangeCallback[] = [];
+  private playErrorCallbacks: PlayErrorCallback[] = [];
   private pendingProgressTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastProgressBroadcastAt = 0;
   private lastProgressPayload: PlaybackProgress | null = null;
@@ -131,6 +136,10 @@ class QueueService {
     this.lyricsChangeCallbacks.push(callback);
   }
 
+  onPlayError(callback: PlayErrorCallback): void {
+    this.playErrorCallbacks.push(callback);
+  }
+
   /**
    * 廣播佇列變更
    */
@@ -207,6 +216,12 @@ class QueueService {
     );
   }
 
+  private broadcastPlayError(error: string, track: Track | null): void {
+    for (const callback of this.playErrorCallbacks) {
+      callback({ error, track });
+    }
+  }
+
   /**
    * 加入歌曲到播放清單
    */
@@ -240,7 +255,7 @@ class QueueService {
 
     if (shouldAutoPlay) {
       log.info("Auto-starting playback for newly added track");
-      this.playNext();
+      await this.playNext();
       return;
     }
 
@@ -451,6 +466,8 @@ class QueueService {
         await getPlayerService().play(nextTrack.videoId);
         log.info("Fallback playback started successfully via YouTube URL");
       } catch (fallbackError) {
+        const errorMessage = `Failed to play track: ${nextTrack.title}. Error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`;
+
         log.error("Both direct stream playback and YouTube URL fallback failed", {
           playError:
             playError instanceof Error ? playError.message : String(playError),
@@ -462,15 +479,18 @@ class QueueService {
           trackTitle: nextTrack.title,
         });
 
-        // 重置狀態，通知前端
+        // 恢復佇列並重置狀態，避免歌曲因自動播放失敗而直接消失。
+        this.queue.unshift(nextTrack);
         this.currentTrack = null;
+        this.currentPosition = 0;
+        this.currentDuration = 0;
         this.isPaused = false;
+        this.broadcastQueueChange();
         this.broadcastState();
+        this.broadcastPlayError(errorMessage, nextTrack);
 
         // 拋出錯誤，讓調用者知道播放失敗
-        throw new Error(
-          `Failed to play track: ${nextTrack.title}. Error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
-        );
+        throw new Error(errorMessage);
       }
     }
   }
@@ -785,6 +805,7 @@ class QueueService {
     this.stateChangeCallbacks = [];
     this.progressChangeCallbacks = [];
     this.lyricsChangeCallbacks = [];
+    this.playErrorCallbacks = [];
     this.lastProgressBroadcastAt = 0;
     this.lastProgressPayload = null;
 
