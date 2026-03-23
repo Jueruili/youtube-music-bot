@@ -68,8 +68,17 @@ describe("QueueService autoplay after adding a searched track", () => {
     const queueService = getQueueService();
     const playerService = getPlayerService();
     const musicService = getMusicService();
+    const trackLoadingEvents: Array<{ track: Track | null; message?: string }> = [];
+    const trackReadyEvents: Track[] = [];
     let resolvePlaybackStart: (() => void) | null = null;
     let addResolved = false;
+
+    queueService.onTrackLoading((payload) => {
+      trackLoadingEvents.push(payload);
+    });
+    queueService.onTrackReady((track) => {
+      trackReadyEvents.push(track);
+    });
 
     stubMethod(playerService, "isCurrentlyPlaying", () => false);
     stubMethod(playerService, "stop", async () => {});
@@ -104,6 +113,16 @@ describe("QueueService autoplay after adding a searched track", () => {
     expect(queueService.getState().currentTrack?.videoId).toBe(
       searchedTrack.videoId,
     );
+    expect(trackLoadingEvents).toEqual([
+      {
+        track: {
+          ...searchedTrack,
+          queueOrigin: "manual",
+          radioGenerated: false,
+        },
+      },
+    ]);
+    expect(trackReadyEvents).toEqual([]);
 
     if (!resolvePlaybackStart) {
       throw new Error("Expected playback start resolver to be assigned");
@@ -118,14 +137,29 @@ describe("QueueService autoplay after adding a searched track", () => {
       searchedTrack.videoId,
     );
     expect(queueService.getQueue()).toEqual([]);
+    expect(trackReadyEvents).toEqual([
+      {
+        ...searchedTrack,
+        queueOrigin: "manual",
+        radioGenerated: false,
+      },
+    ]);
   });
 
   test("should reject addToQueue when autoplay fails and keep the track queued", async () => {
     const queueService = getQueueService();
     const playerService = getPlayerService();
     const musicService = getMusicService();
+    const trackLoadingEvents: Array<{ track: Track | null; message?: string }> = [];
+    const trackReadyEvents: Track[] = [];
     const playErrors: Array<{ error: string; track: Track | null }> = [];
 
+    queueService.onTrackLoading((payload) => {
+      trackLoadingEvents.push(payload);
+    });
+    queueService.onTrackReady((track) => {
+      trackReadyEvents.push(track);
+    });
     queueService.onPlayError((payload) => {
       playErrors.push(payload);
     });
@@ -169,5 +203,15 @@ describe("QueueService autoplay after adding a searched track", () => {
         },
       },
     ]);
+    expect(trackLoadingEvents).toEqual([
+      {
+        track: {
+          ...searchedTrack,
+          queueOrigin: "manual",
+          radioGenerated: false,
+        },
+      },
+    ]);
+    expect(trackReadyEvents).toEqual([]);
   });
 });

@@ -86,6 +86,8 @@ export interface PlaybackProgress {
 
 // WebSocket 訊息類型
 export type WSMessage =
+  | { type: "track_loading"; track: Track | null; message?: string }
+  | { type: "track_ready"; track: Track }
   | { type: "now_playing"; track: Track; position: number; duration: number }
   | { type: "queue_updated"; queue: Track[] }
   | { type: "lyrics"; lyrics: LyricLine[] }

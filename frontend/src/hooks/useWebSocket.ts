@@ -28,27 +28,72 @@ export const useWebSocket = () => {
   const setLyrics = usePlayerStore((state) => state.setLyrics);
   const { showToast } = useToast();
 
+  const clearLoadingIfTrackMatches = useCallback((trackId: string | null) => {
+    const activeTrackId =
+      usePlayerStore.getState().playbackState.currentTrack?.videoId ?? null;
+
+    if (trackId === null || activeTrackId === null || activeTrackId === trackId) {
+      usePlayerStore.getState().setLoadingTrack(false);
+    }
+  }, []);
+
   const handleMessage = useCallback(
     (message: WSMessage) => {
       switch (message.type) {
         case "playback_state": {
-          if (message.state.currentTrack || message.state.queue.length > 0) {
-            usePlayerStore.getState().setLoadingTrack(false);
-          }
-
           const previousState = usePlayerStore.getState().playbackState;
           setPlaybackState(
-            mergePlaybackStateDuringTrackTransition(
-              message.state,
-              previousState,
-            ),
+            mergePlaybackStateDuringTrackTransition(message.state, previousState),
           );
+
+          if (message.state.currentTrack === null && message.state.queue.length === 0) {
+            usePlayerStore.getState().setLoadingTrack(false);
+          }
           break;
         }
 
+        case "track_loading":
+          usePlayerStore
+            .getState()
+            .setLoadingTrack(
+              true,
+              message.message ||
+                (message.track
+                  ? `正在載入「${message.track.title}」...`
+                  : "正在準備下一首..."),
+            );
+
+          if (message.track) {
+            updatePlaybackState({
+              currentTrack: message.track,
+              position: 0,
+              duration: message.track.duration,
+              isPlaying: false,
+            });
+          } else {
+            updatePlaybackState({
+              position: 0,
+              isPlaying: false,
+            });
+          }
+          break;
+
+        case "track_ready":
+          if (
+            usePlayerStore.getState().playbackState.currentTrack?.videoId ===
+            message.track.videoId
+          ) {
+            updatePlaybackState({
+              currentTrack: message.track,
+              duration: message.track.duration,
+              isPlaying: true,
+            });
+          }
+          clearLoadingIfTrackMatches(message.track.videoId);
+          break;
+
         case "now_playing":
-          // 開始播放 → 清除載入狀態
-          usePlayerStore.getState().setLoadingTrack(false);
+          clearLoadingIfTrackMatches(message.track.videoId);
           updatePlaybackState({
             currentTrack: message.track,
             position: message.position,
@@ -63,10 +108,11 @@ export const useWebSocket = () => {
 
         case "playback_progress":
           updatePlaybackProgress(message.progress);
+          clearLoadingIfTrackMatches(message.progress.trackId);
           break;
 
         case "play_error":
-          usePlayerStore.getState().setLoadingTrack(false);
+          clearLoadingIfTrackMatches(message.track?.videoId ?? null);
           showToast({
             message: message.track
               ? `無法播放「${message.track.title}」：${message.error}`
@@ -88,12 +134,14 @@ export const useWebSocket = () => {
             duration: 0,
             isPlaying: false,
           });
+          usePlayerStore.getState().setLoadingTrack(true, "正在準備下一首...");
           setLyrics([]);
           break;
 
         case "play":
-          // 開始播放 → 清除載入狀態
-          usePlayerStore.getState().setLoadingTrack(false);
+          clearLoadingIfTrackMatches(
+            usePlayerStore.getState().playbackState.currentTrack?.videoId ?? null,
+          );
           updatePlaybackState({ isPlaying: true });
           break;
 
@@ -106,6 +154,7 @@ export const useWebSocket = () => {
       }
     },
     [
+      clearLoadingIfTrackMatches,
       setPlaybackState,
       updatePlaybackProgress,
       updatePlaybackState,

@@ -82,8 +82,13 @@ describe("QueueService radio mode", () => {
     const queueService = getQueueService();
     const playerService = getPlayerService();
     const musicService = getMusicService();
+    const trackLoadingEvents: Array<{ track: Track | null; message?: string }> = [];
     const playUrlCalls: string[] = [];
     const mixSeeds: string[] = [];
+
+    queueService.onTrackLoading((payload) => {
+      trackLoadingEvents.push(payload);
+    });
 
     stubMethod(playerService, "isCurrentlyPlaying", () => false);
     stubMethod(playerService, "play", async () => {
@@ -122,6 +127,26 @@ describe("QueueService radio mode", () => {
     expect(state.queue[0]?.videoId).toBe("radio-2");
     expect(state.queue[0]?.queueOrigin).toBe("radio");
     expect(state.queue[0]?.radioGenerated).toBe(true);
+    expect(trackLoadingEvents).toEqual([
+      {
+        track: {
+          ...baseTrack,
+          queueOrigin: "manual",
+          radioGenerated: false,
+        },
+      },
+      {
+        track: null,
+        message: "正在準備下一首...",
+      },
+      {
+        track: {
+          ...radioTracks[0],
+          queueOrigin: "radio",
+          radioGenerated: true,
+        },
+      },
+    ]);
   });
 
   test("should keep manually added tracks ahead of radio-generated tracks", async () => {

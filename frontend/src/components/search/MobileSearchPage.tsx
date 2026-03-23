@@ -88,21 +88,15 @@ export const MobileSearchPage = () => {
   const handleAddToQueue = async (track: Track) => {
     setAddingId(track.videoId);
 
-    usePlayerStore
-      .getState()
-      .setLoadingTrack(true, `正在載入「${track.title}」...`);
-
     try {
       const response = await api.addToQueue(track, currentRequester);
       if (response.success) {
         showToast({ message: "已加入播放佇列", type: "success" });
       } else {
         showToast({ message: response.error || "加入失敗", type: "error" });
-        usePlayerStore.getState().setLoadingTrack(false);
       }
     } catch {
       showToast({ message: "加入發生錯誤", type: "error" });
-      usePlayerStore.getState().setLoadingTrack(false);
     } finally {
       setAddingId(null);
     }
@@ -110,9 +104,6 @@ export const MobileSearchPage = () => {
 
   const handleAddCollection = async (result: CollectionSearchResult) => {
     setAddingCollectionId(result.id);
-    usePlayerStore
-      .getState()
-      .setLoadingTrack(true, `正在加入「${result.title}」的 ${result.tracks.length} 首歌曲...`);
 
     try {
       const response = await api.addTracksToQueue(result.tracks, currentRequester);
@@ -126,11 +117,9 @@ export const MobileSearchPage = () => {
           message: response.error || "加入整組內容失敗",
           type: "error",
         });
-        usePlayerStore.getState().setLoadingTrack(false);
       }
     } catch {
       showToast({ message: "加入整組內容發生錯誤", type: "error" });
-      usePlayerStore.getState().setLoadingTrack(false);
     } finally {
       setAddingCollectionId(null);
     }
@@ -138,7 +127,6 @@ export const MobileSearchPage = () => {
 
   const handleCreateMix = async (track: Track) => {
     setCreatingMixId(track.videoId);
-    usePlayerStore.getState().setLoadingTrack(true, "正在取得推薦歌曲...");
 
     try {
       const response = await api.createMix(track, currentRequester);
@@ -153,11 +141,9 @@ export const MobileSearchPage = () => {
           message: response.error || "創建 Mix 失敗",
           type: "error",
         });
-        usePlayerStore.getState().setLoadingTrack(false);
       }
     } catch {
       showToast({ message: "創建 Mix 發生錯誤", type: "error" });
-      usePlayerStore.getState().setLoadingTrack(false);
     } finally {
       setCreatingMixId(null);
     }
