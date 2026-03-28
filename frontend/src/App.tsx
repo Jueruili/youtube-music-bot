@@ -10,7 +10,9 @@ import { cn } from "@/lib/utils";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { LibraryView } from "@/components/library/LibraryView";
 import { AlbumDialog } from "@/components/album/AlbumDialog";
+import { ArtistDialog } from "@/components/artist/ArtistDialog";
 import { PlaylistPickerDialog } from "@/components/library/PlaylistPickerDialog";
+import { PlaylistDialog } from "@/components/playlist/PlaylistDialog";
 import { SearchModal } from "@/components/search/SearchModal";
 import { PlayerSection } from "@/components/player/PlayerSection";
 import { MiniPlayer } from "@/components/player/MiniPlayer";
@@ -20,6 +22,7 @@ import { QueueSection } from "@/components/queue/QueueSection";
 import { LyricsDisplay } from "@/components/lyrics/LyricsDisplay";
 import { MobileContent } from "@/components/mobile/MobileContent";
 import { LibraryContent } from "@/components/mobile/LibraryContent";
+import { DiscoverView } from "@/components/discover/DiscoverView";
 import { ToastProvider } from "@/components/ui/toast";
 import {
   Tabs,
@@ -75,6 +78,7 @@ function AppContent() {
                 <PlayerSection
                   sidebarMode
                   idleVariant="sidebar"
+                  idleContext="library"
                   onSearchClick={handleSearchOpen}
                 />
               </div>
@@ -82,15 +86,36 @@ function AppContent() {
                 <LibraryView />
               </div>
             </div>
+          ) : desktopMode === "discover" ? (
+            <div className="grid h-full min-h-0 w-full gap-4 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] xl:gap-6 xl:grid-cols-[minmax(340px,400px)_minmax(0,1fr)]">
+              <div className="flex h-full min-h-0 flex-col gap-4 xl:gap-6">
+                <PlayerSection
+                  sidebarMode
+                  idleVariant="sidebar"
+                  idleContext="discover"
+                  onSearchClick={handleSearchOpen}
+                />
+              </div>
+              <div className="h-full min-h-0">
+                <DiscoverView />
+              </div>
+            </div>
           ) : isDesktopIdle ? (
             <div className="mx-auto flex h-full w-full max-w-[1180px] min-h-0 items-center justify-center">
-              <PlayerSection idleVariant="hero" onSearchClick={handleSearchOpen} />
+              <PlayerSection
+                idleVariant="hero"
+                idleContext="default"
+                onSearchClick={handleSearchOpen}
+              />
             </div>
           ) : (
             <>
               {/* 左側：播放器 */}
               <div className="flex min-h-0 flex-col gap-4 xl:gap-6">
-                <PlayerSection onSearchClick={handleSearchOpen} />
+                <PlayerSection
+                  idleContext="default"
+                  onSearchClick={handleSearchOpen}
+                />
               </div>
 
               {/* 右側：標籤切換（歌詞/播放佇列） */}
@@ -130,6 +155,7 @@ function AppContent() {
         {/* 手機版：根據 TabBar 狀態動態切換內容 */}
         <div className="h-full lg:hidden">
           {mobileActiveTab === "search" && <MobileContent />}
+          {mobileActiveTab === "discover" && <DiscoverView isMobile />}
           {mobileActiveTab === "library" && <LibraryContent />}
         </div>
       </MainLayout>
@@ -147,6 +173,8 @@ function AppContent() {
         onOpenChange={setIsSearchModalOpen}
       />
       <AlbumDialog />
+      <ArtistDialog />
+      <PlaylistDialog />
       <PlaylistPickerDialog />
     </>
   );

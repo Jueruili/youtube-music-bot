@@ -10,18 +10,20 @@ import { OpenAlbumButton } from "@/components/album/OpenAlbumButton";
 import { Avatar } from "@/components/ui/avatar";
 import { formatTime } from "@/utils/format";
 import { RadioToggleButton } from "./RadioToggleButton";
-import type { PlayerIdleVariant } from "./NowPlaying";
+import type { PlayerIdleContext, PlayerIdleVariant } from "./NowPlaying";
 
 interface PlayerSectionProps {
   onSearchClick?: () => void;
   sidebarMode?: boolean;
   idleVariant?: PlayerIdleVariant;
+  idleContext?: PlayerIdleContext;
 }
 
 export const PlayerSection = ({
   onSearchClick,
   sidebarMode = false,
   idleVariant = "hero",
+  idleContext = "default",
 }: PlayerSectionProps) => {
   const currentTrack = usePlayerStore((state) => state.playbackState.currentTrack);
   const nextTrack = usePlayerStore((state) => state.playbackState.queue[0] ?? null);
@@ -62,6 +64,7 @@ export const PlayerSection = ({
           <NowPlaying
             onSearchClick={onSearchClick}
             idleVariant={isPlaybackIdle ? idleVariant : null}
+            idleContext={idleContext}
             compact={!isHeroIdle}
             sidebarMode={isSidebarShell}
           />

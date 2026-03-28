@@ -266,6 +266,97 @@ body {
     box-shadow 360ms ease;
 }
 
+.discover-rail-item {
+  --discover-rail-emphasis: 0;
+  --discover-rail-base-rem: 19.25;
+  --discover-rail-grow-rem: 6.25;
+  --discover-rail-max-size: 82vw;
+  position: relative;
+  flex-grow: 0;
+  flex-shrink: 0;
+  flex-basis:
+    min(
+      var(--discover-rail-max-size),
+      calc(
+        (
+            var(--discover-rail-base-rem) +
+              (var(--discover-rail-grow-rem) * var(--discover-rail-emphasis))
+          ) * 1rem
+      )
+    );
+  width:
+    min(
+      var(--discover-rail-max-size),
+      calc(
+        (
+            var(--discover-rail-base-rem) +
+              (var(--discover-rail-grow-rem) * var(--discover-rail-emphasis))
+          ) * 1rem
+      )
+    );
+  padding-bottom: calc(2.25rem + (var(--discover-rail-emphasis) * 0.625rem));
+  margin-inline-end: calc(0.125rem + (var(--discover-rail-emphasis) * 1rem));
+  z-index: 0;
+  transition:
+    flex-basis 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin-inline-end 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding-bottom 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.discover-rail-item-track {
+  --discover-rail-base-rem: 17.5;
+  --discover-rail-grow-rem: 6.5;
+  --discover-rail-max-size: 78vw;
+}
+
+.discover-rail-item-collection {
+  --discover-rail-base-rem: 18.25;
+  --discover-rail-grow-rem: 8.5;
+  --discover-rail-max-size: 82vw;
+}
+
+.discover-rail-card {
+  transform:
+    translate3d(0, calc(var(--discover-rail-emphasis) * -12px), 0)
+    scale(calc(1 + (var(--discover-rail-emphasis) * 0.052)));
+  transform-origin: left top;
+  will-change: transform, box-shadow, border-color, background;
+  backface-visibility: hidden;
+  isolation: isolate;
+  transition:
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 360ms ease,
+    border-color 320ms ease,
+    box-shadow 360ms ease;
+}
+
+.discover-rail-item > .discover-rail-card {
+  width: 100%;
+}
+
+.discover-rail-item[data-featured="true"] {
+  z-index: 2;
+}
+
+.discover-rail-item[data-featured="true"] > .discover-rail-card {
+  background:
+    radial-gradient(circle at top center, var(--player-tint), transparent 44%),
+    radial-gradient(circle at bottom right, var(--accent-soft), transparent 40%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-elevated) 92%, white 8%) 0%, var(--surface-elevated) 100%);
+  border-color: color-mix(in srgb, var(--surface-border) 76%, var(--dynamic-ring) 24%);
+  box-shadow:
+    0 22px 56px -30px var(--accent-glow),
+    var(--surface-shadow-strong);
+}
+
+.discover-rail-card-media,
+.discover-artwork-media {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
 .player-marquee {
   display: block;
   overflow: hidden;

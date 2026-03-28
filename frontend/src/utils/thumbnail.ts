@@ -17,6 +17,14 @@ export const ThumbnailQuality = {
 export type ThumbnailQuality =
   (typeof ThumbnailQuality)[keyof typeof ThumbnailQuality];
 
+type SourceThumbnailVariant =
+  | "default"
+  | "mqdefault"
+  | "hqdefault"
+  | "sddefault"
+  | "hq720"
+  | "maxresdefault";
+
 const THUMBNAIL_QUALITY_FALLBACKS: Record<ThumbnailQuality, ThumbnailQuality[]> =
   {
     [ThumbnailQuality.MAXRES]: [
@@ -44,6 +52,31 @@ const THUMBNAIL_QUALITY_FALLBACKS: Record<ThumbnailQuality, ThumbnailQuality[]> 
     [ThumbnailQuality.DEFAULT]: [ThumbnailQuality.DEFAULT],
   };
 
+const SOURCE_THUMBNAIL_RANK: Record<SourceThumbnailVariant, number> = {
+  default: 1,
+  mqdefault: 2,
+  hqdefault: 3,
+  sddefault: 4,
+  hq720: 5,
+  maxresdefault: 6,
+};
+
+const REQUESTED_THUMBNAIL_RANK: Record<ThumbnailQuality, number> = {
+  [ThumbnailQuality.DEFAULT]: 1,
+  [ThumbnailQuality.MEDIUM]: 2,
+  [ThumbnailQuality.HIGH]: 3,
+  [ThumbnailQuality.STANDARD]: 4,
+  [ThumbnailQuality.MAXRES]: 6,
+};
+
+function getSourceThumbnailVariant(url: string): SourceThumbnailVariant | null {
+  const match = url.match(
+    /\/(default|mqdefault|hqdefault|sddefault|hq720|maxresdefault)\.(?:jpg|webp)(?:[?#].*)?$/i,
+  );
+
+  return (match?.[1]?.toLowerCase() as SourceThumbnailVariant | undefined) ?? null;
+}
+
 /**
  * 將 YouTube 縮略圖 URL 轉換為指定解析度
  *
@@ -64,18 +97,16 @@ export function getHighQualityThumbnail(
 ): string {
   if (!url) return url;
 
-  // 匹配 YouTube 縮略圖 URL 模式
-  const match = url.match(
-    /\/vi\/([^/]+)\/(default|mqdefault|hqdefault|sddefault|maxresdefault)\.jpg/,
+  const youtubeVideoMatch = url.match(
+    /(?:i\.ytimg\.com|img\.youtube\.com)\/vi(?:_webp)?\/([^/?]+)/i,
   );
 
-  if (!match) {
-    // 不是標準 YouTube 縮略圖格式，直接返回
-    return url;
+  if (youtubeVideoMatch?.[1]) {
+    const videoId = youtubeVideoMatch[1];
+    return `https://i.ytimg.com/vi/${videoId}/${quality}.jpg`;
   }
 
-  const videoId = match[1];
-  return `https://i.ytimg.com/vi/${videoId}/${quality}.jpg`;
+  return url;
 }
 
 /**
@@ -120,11 +151,38 @@ export function getOptimizedThumbnailCandidates(
     return [];
   }
 
-  const candidates = THUMBNAIL_QUALITY_FALLBACKS[preferredQuality].map(
+  const generatedCandidates = THUMBNAIL_QUALITY_FALLBACKS[preferredQuality].map(
     (quality) => getOptimizedThumbnail(url, quality),
   );
+  const sourceVariant = getSourceThumbnailVariant(url);
+  const sourceRank = sourceVariant ? SOURCE_THUMBNAIL_RANK[sourceVariant] : 0;
 
-  candidates.push(url);
+  if (sourceRank <= 0) {
+    return Array.from(new Set([...generatedCandidates, url].filter(Boolean)));
+  }
+
+  const higherRankCandidates: string[] = [];
+  const lowerOrEqualRankCandidates: string[] = [];
+
+  for (const candidate of generatedCandidates) {
+    const candidateVariant = getSourceThumbnailVariant(candidate);
+    const candidateRank = candidateVariant
+      ? SOURCE_THUMBNAIL_RANK[candidateVariant]
+      : REQUESTED_THUMBNAIL_RANK[preferredQuality];
+
+    if (candidateRank > sourceRank) {
+      higherRankCandidates.push(candidate);
+      continue;
+    }
+
+    lowerOrEqualRankCandidates.push(candidate);
+  }
+
+  const candidates = [
+    ...higherRankCandidates,
+    url,
+    ...lowerOrEqualRankCandidates,
+  ];
 
   return Array.from(new Set(candidates.filter(Boolean)));
 }

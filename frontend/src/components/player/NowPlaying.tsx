@@ -12,10 +12,12 @@ import { MarqueeText } from "./MarqueeText";
 const EMPTY_FAVORITES: Array<{ videoId: string }> = [];
 
 export type PlayerIdleVariant = "hero" | "sidebar";
+export type PlayerIdleContext = "default" | "library" | "discover";
 
 interface NowPlayingProps {
   onSearchClick?: () => void;
   idleVariant?: PlayerIdleVariant | null;
+  idleContext?: PlayerIdleContext;
   compact?: boolean;
   sidebarMode?: boolean;
 }
@@ -23,6 +25,7 @@ interface NowPlayingProps {
 export const NowPlaying = ({
   onSearchClick,
   idleVariant = "hero",
+  idleContext = "default",
   compact = false,
   sidebarMode = false,
 }: NowPlayingProps) => {
@@ -35,6 +38,22 @@ export const NowPlaying = ({
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const openPlaylistPicker = useLibraryStore((state) => state.openPlaylistPicker);
   const { showToast } = useToast();
+  const sidebarIdleCopy =
+    idleContext === "discover"
+      ? {
+          title: "從 Discover 開始播放",
+          description:
+            "從右側的本站熱門、市場探索或新專輯挑一首歌，播放器會在左側即時接手。",
+          footnote:
+            "右側 Discover 比較適合連續挑歌；按 ⌘K 則能隨時直接搜尋指定曲目。",
+        }
+      : {
+          title: "從資料庫開始播放",
+          description:
+            "搜尋、開啟歌單或從收藏挑一首歌，播放器會保持在左側即時更新。",
+          footnote:
+            "按 ⌘K 可以隨時開啟搜尋，從收藏或歌單也能快速開始播放。",
+        };
 
   if (!currentTrack) {
     if (idleVariant === null) {
@@ -77,10 +96,10 @@ export const NowPlaying = ({
               </span>
               <div className="space-y-2">
                 <p className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] xl:text-[2rem]">
-                  從資料庫開始播放
+                  {sidebarIdleCopy.title}
                 </p>
                 <p className="text-sm leading-6 text-[var(--text-secondary)]">
-                  搜尋、開啟歌單或從收藏挑一首歌，播放器會保持在左側即時更新。
+                  {sidebarIdleCopy.description}
                 </p>
               </div>
             </div>
@@ -95,16 +114,16 @@ export const NowPlaying = ({
               <Search className="h-4 w-4" />
               搜尋音樂
             </Button>
-            <div className="inline-flex h-11 items-center gap-2 rounded-2xl border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-4 text-sm font-medium text-[var(--text-secondary)]">
-              <kbd className="inline-flex h-7 min-w-7 items-center justify-center rounded-xl border border-[color:var(--surface-border)] bg-[var(--surface-muted)] px-2 font-mono text-xs">
+            <p className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)]">
+              <kbd className="inline-flex h-7 min-w-7 items-center justify-center rounded-xl border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-2 font-mono text-xs">
                 <span className="text-[0.65rem]">⌘</span>K
               </kbd>
-              快速搜尋
-            </div>
+              搜尋快捷鍵
+            </p>
           </div>
 
           <p className="text-sm leading-6 text-[var(--text-muted)]">
-            開始播放後，封面、控制與即將播放資訊會在這個側欄持續同步。
+            {sidebarIdleCopy.footnote}
           </p>
         </div>
       );
@@ -135,7 +154,7 @@ export const NowPlaying = ({
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-3">
+        <div className="flex flex-col items-center gap-3">
           <Button
             type="button"
             size="lg"
@@ -145,12 +164,12 @@ export const NowPlaying = ({
             <Search className="h-4 w-4" />
             搜尋音樂
           </Button>
-          <div className="inline-flex h-12 items-center gap-2 rounded-2xl border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-4 text-sm font-medium text-[var(--text-secondary)]">
-            <kbd className="inline-flex h-7 min-w-7 items-center justify-center rounded-xl border border-[color:var(--surface-border)] bg-[var(--surface-muted)] px-2 font-mono text-xs">
+          <p className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)]">
+            <kbd className="inline-flex h-7 min-w-7 items-center justify-center rounded-xl border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-2 font-mono text-xs">
               <span className="text-[0.65rem]">⌘</span>K
             </kbd>
-            快速搜尋
-          </div>
+            也可以直接開啟搜尋
+          </p>
         </div>
         <p className="max-w-[32rem] text-sm leading-7 text-[var(--text-muted)]">
           加入第一首後，你就可以建立 Mix、查看即時歌詞，或把更多歌曲排進播放佇列。
