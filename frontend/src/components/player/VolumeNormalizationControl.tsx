@@ -77,10 +77,10 @@ export const VolumeNormalizationControl = ({
             </p>
           </div>
           <p className="text-xs leading-5 text-[var(--text-secondary)]">
-            依照 YouTube 的 loudness dB metadata 做固定增減益，讓不同歌曲的實際聽感音量更一致。
+            依照 YouTube 的 loudness dB metadata 壓低偏大的歌曲，讓不同曲目的聽感更穩定。
           </p>
           <p className="text-xs leading-5 text-[var(--text-muted)]">
-            這不會改變你的主音量滑桿，只會幫每首歌補正大小聲差異。
+            這不會提高主音量，也不會把較安靜的歌曲額外放大。
           </p>
         </div>
         <Button

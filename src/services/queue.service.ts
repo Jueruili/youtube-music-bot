@@ -41,6 +41,7 @@ const MAX_CROSSFADE_TRIGGER_LEAD_SECONDS = 1;
 const VOLUME_NORMALIZATION_REFERENCE_DB = -14;
 const MAX_VOLUME_NORMALIZATION_GAIN_DB = 0;
 const MAX_VOLUME_NORMALIZATION_ATTENUATION_DB = 12;
+const MAX_VOLUME_NORMALIZATION_MULTIPLIER = 1;
 
 class QueueService {
   private static instance: QueueService | undefined;
@@ -1214,12 +1215,16 @@ class QueueService {
 
     const loudnessInfo = await getMusicService().getTrackLoudness(track.videoId);
     const normalizationGainDb = resolveNormalizationGainDb(loudnessInfo);
-    const volumeMultiplier = Math.pow(10, normalizationGainDb / 20);
+    const volumeMultiplier = clampVolumeNormalizationMultiplier(
+      Math.pow(10, normalizationGainDb / 20),
+    );
+    const metadataSource = resolveLoudnessMetadataSource(loudnessInfo);
 
     log.debug("Resolved track volume normalization", {
       videoId: track.videoId,
       loudnessDb: loudnessInfo?.loudnessDb,
       perceptualLoudnessDb: loudnessInfo?.perceptualLoudnessDb,
+      metadataSource,
       normalizationGainDb,
       volumeMultiplier,
     });
@@ -1514,6 +1519,11 @@ function arePlaybackSettingsEqual(
 function resolveNormalizationGainDb(
   loudnessInfo: TrackLoudnessInfo | null,
 ): number {
+  const loudnessDb = loudnessInfo?.loudnessDb;
+  if (typeof loudnessDb === "number" && Number.isFinite(loudnessDb)) {
+    return clampNormalizationGainDb(loudnessDb > 0 ? -loudnessDb : 0);
+  }
+
   const perceptualLoudnessDb = loudnessInfo?.perceptualLoudnessDb;
   if (
     typeof perceptualLoudnessDb === "number" &&
@@ -1522,11 +1532,6 @@ function resolveNormalizationGainDb(
     return clampNormalizationGainDb(
       VOLUME_NORMALIZATION_REFERENCE_DB - perceptualLoudnessDb,
     );
-  }
-
-  const loudnessDb = loudnessInfo?.loudnessDb;
-  if (typeof loudnessDb === "number" && Number.isFinite(loudnessDb)) {
-    return clampNormalizationGainDb(-loudnessDb);
   }
 
   return 0;
@@ -1538,6 +1543,34 @@ function clampNormalizationGainDb(gainDb: number): number {
     -MAX_VOLUME_NORMALIZATION_ATTENUATION_DB,
     Math.min(MAX_VOLUME_NORMALIZATION_GAIN_DB, gainDb),
   );
+}
+
+function clampVolumeNormalizationMultiplier(multiplier: number): number {
+  if (!Number.isFinite(multiplier) || multiplier <= 0) {
+    return MAX_VOLUME_NORMALIZATION_MULTIPLIER;
+  }
+
+  return Math.min(MAX_VOLUME_NORMALIZATION_MULTIPLIER, multiplier);
+}
+
+function resolveLoudnessMetadataSource(
+  loudnessInfo: TrackLoudnessInfo | null,
+): "loudnessDb" | "perceptualLoudnessDb" | "none" {
+  if (
+    typeof loudnessInfo?.loudnessDb === "number" &&
+    Number.isFinite(loudnessInfo.loudnessDb)
+  ) {
+    return "loudnessDb";
+  }
+
+  if (
+    typeof loudnessInfo?.perceptualLoudnessDb === "number" &&
+    Number.isFinite(loudnessInfo.perceptualLoudnessDb)
+  ) {
+    return "perceptualLoudnessDb";
+  }
+
+  return "none";
 }
 
 function isValidRequester(

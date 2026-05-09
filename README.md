@@ -10,7 +10,7 @@
 - 📋 **播放清單**：查看和管理排隊中的歌曲
 - 📝 **同步歌詞**：即時顯示歌詞（支援 LRC 格式）
 - 🔄 **即時同步**：透過 WebSocket 即時更新所有客戶端的狀態
-- 🔉 **音量平衡**：依 YouTube loudness metadata 自動衰減偏 loud 的歌曲，不會額外放大較安靜的曲目
+- 🔉 **音量平衡**：依 YouTube loudness metadata 自動衰減偏 loud 的歌曲，不會提高主音量或額外放大較安靜的曲目
 - 💾 **持久化同步 Session**：容器重啟後保留配對關係，不需要重新配對
 - 🏷️ **版本可見性**：前端 Header 與後端 API 會顯示目前系統版本與 Git SHA
 
@@ -724,9 +724,9 @@ Workflow 檔案位置：
 {
   "success": true,
   "data": {
-    "appVersion": "0.2.0",
+    "appVersion": "0.7.10",
     "gitSha": "abc1234",
-    "buildVersion": "0.2.0+abc1234",
+    "buildVersion": "0.7.10+abc1234",
     "environment": "production"
   }
 }

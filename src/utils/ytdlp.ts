@@ -3,6 +3,8 @@ import { spawnSync } from "node:child_process";
 
 const DEFAULT_EXTRACTOR_ARGS = "youtube:player_client=android_vr";
 const DEFAULT_COMMAND_TIMEOUT_MS = 45_000;
+const NON_DRC_AUDIO_FORMAT_SELECTOR =
+  "bestaudio[format_id!$=-drc]/bestaudio/best";
 
 export type YtDlpCookiesStatus = {
   configured: boolean;
@@ -104,7 +106,7 @@ export function getYtDlpCliArgs(url: string): string[] {
     "--no-playlist",
     "-g",
     "-f",
-    "bestaudio/best",
+    NON_DRC_AUDIO_FORMAT_SELECTOR,
   ];
 
   const extractorArgs = getYtDlpExtractorArgs();

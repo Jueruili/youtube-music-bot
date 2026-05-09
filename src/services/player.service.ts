@@ -46,6 +46,7 @@ const RETIRING_STOP_GRACE_MS = 180;
 const SESSION_VOLUME_RETRY_DELAY_MS = 120;
 const MAX_USER_VOLUME = 100;
 const MAX_SESSION_VOLUME = 200;
+const MAX_TRACK_VOLUME_MULTIPLIER = 1;
 
 class PlayerService {
   private static instance: PlayerService;
@@ -154,20 +155,25 @@ class PlayerService {
       return 1;
     }
 
-    return Math.max(0.1, Math.min(4, multiplier));
+    return Math.max(0.1, Math.min(MAX_TRACK_VOLUME_MULTIPLIER, multiplier));
   }
 
   private computeTargetVolume(
     userVolume: number,
     volumeMultiplier: number,
   ): number {
-    return this.clampSessionVolume(userVolume * volumeMultiplier);
+    return this.clampSessionVolume(
+      userVolume * this.normalizeVolumeMultiplier(volumeMultiplier),
+    );
   }
 
   private refreshSessionTargetVolume(
     session: PlayerSession,
     userVolume: number = this.currentVolume,
   ): number {
+    session.volumeMultiplier = this.normalizeVolumeMultiplier(
+      session.volumeMultiplier,
+    );
     session.targetVolume = this.computeTargetVolume(
       userVolume,
       session.volumeMultiplier,
@@ -339,6 +345,15 @@ class PlayerService {
 
   private setSessionVolume(session: PlayerSession, volume: number): boolean {
     const nextVolume = this.clampSessionVolume(volume);
+    log.debug("Applying session volume", {
+      sessionId: session.id,
+      purpose: session.purpose,
+      trackId: session.trackId,
+      volumeMultiplier: session.volumeMultiplier,
+      targetVolume: session.targetVolume,
+      requestedVolume: volume,
+      appliedVolume: nextVolume,
+    });
     return this.sendIpcCommand(session, ["set_property", "volume", nextVolume]);
   }
 
@@ -1301,6 +1316,12 @@ class PlayerService {
     }
 
     const nextMultiplier = this.normalizeVolumeMultiplier(volumeMultiplier);
+    log.debug("Updating track volume multiplier", {
+      trackId: normalizedTrackId,
+      requestedMultiplier: volumeMultiplier,
+      volumeMultiplier: nextMultiplier,
+      userVolume: this.currentVolume,
+    });
     let updatedActive = false;
     let updatedStandby = false;
 

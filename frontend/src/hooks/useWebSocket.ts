@@ -5,6 +5,9 @@ import type { WSMessage } from "@/types";
 import { mergePlaybackStateDuringTrackTransition } from "@/utils/playbackStateTransition";
 import { getWebSocketUrl } from "@/utils/websocket-url";
 
+const RECONNECT_INITIAL_DELAY_MS = 1000;
+const RECONNECT_MAX_DELAY_MS = 10000;
+
 export const useWebSocket = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const intentionalCloseRef = useRef(new WeakSet<WebSocket>());
@@ -254,23 +257,17 @@ export const useWebSocket = () => {
         return;
       }
 
-      // 指數退避重連，最多嘗試 5 次
-      if (reconnectAttemptsRef.current < 5) {
-        const delay = Math.min(
-          1000 * Math.pow(2, reconnectAttemptsRef.current),
-          10000,
-        );
-        reconnectAttemptsRef.current++;
+      const attempt = reconnectAttemptsRef.current + 1;
+      const delay = Math.min(
+        RECONNECT_INITIAL_DELAY_MS * Math.pow(2, reconnectAttemptsRef.current),
+        RECONNECT_MAX_DELAY_MS,
+      );
+      reconnectAttemptsRef.current = attempt;
 
-        console.log(
-          `將在 ${delay}ms 後重新連線 (第 ${reconnectAttemptsRef.current} 次)...`,
-        );
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, delay);
-      } else {
-        console.error("WebSocket 重連次數已達上限，停止重連");
-      }
+      console.log(`將在 ${delay}ms 後重新連線 (第 ${attempt} 次)...`);
+      reconnectTimeoutRef.current = setTimeout(() => {
+        connect();
+      }, delay);
     };
   }, [setConnectionStatus, handleMessage]);
 
