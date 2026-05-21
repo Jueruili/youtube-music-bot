@@ -1,6 +1,35 @@
 import type { ReleaseNotesEntry } from "../types/index.ts";
 
 const fallbackReleaseNotesByVersion: Record<string, ReleaseNotesEntry> = {
+  "0.7.10": {
+    version: "0.7.10",
+    title: "Dynamic Voice 保守音量平衡",
+    publishedAt: "2026-05-09",
+    status: "preview",
+    summary:
+      "重新收斂 Dynamic Voice 的音量平衡策略，避免系統把較安靜的歌曲額外放大，並讓播放鏈路更容易診斷。",
+    sections: [
+      {
+        category: "fixed",
+        title: "音量平衡修復",
+        description: "把 Dynamic Voice 固定為只衰減偏 loud 曲目的保守模式。",
+        items: [
+          "優先使用 YouTube loudnessDb metadata 判斷偏 loud 曲目，只在需要時衰減，不再把安靜歌曲 boost 起來。",
+          "播放器套用音量倍率時新增上限防線，確保 Dynamic Voice 開啟後單曲 target volume 不會高於使用者主音量。",
+        ],
+      },
+      {
+        category: "changed",
+        title: "播放鏈路強化",
+        description: "降低串流格式與診斷落差造成的實際聽感偏移。",
+        items: [
+          "yt-dlp fallback 會優先避開 YouTube DRC 音軌，避免動態壓縮版本再疊加本機音量平衡。",
+          "音量平衡 log 新增 metadata source、gain dB、倍率與播放器 target volume，方便追查現場曲目案例。",
+          "前端播放 WebSocket 斷線後會持續退避重連，避免本機或部署重啟後畫面停在未連線狀態。",
+        ],
+      },
+    ],
+  },
   "0.7.9": {
     version: "0.7.9",
     title: "yt-dlp 播放備援強化",

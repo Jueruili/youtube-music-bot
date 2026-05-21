@@ -4,7 +4,11 @@ on:
   push:
     branches:
       - main
+      - codex/dev
   pull_request:
+    branches:
+      - main
+      - codex/dev
   workflow_dispatch:
 
 env:

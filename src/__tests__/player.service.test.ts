@@ -194,7 +194,7 @@ describe("PlayerService - seek functionality", () => {
         id: 2,
         purpose: "standby" as const,
         trackId: "track-2",
-        volumeMultiplier: 1.5,
+        volumeMultiplier: 0.75,
       };
       const setVolumeSpy = mock((_session: unknown, _volume: number) => true);
       const player = playerService as unknown as {
@@ -215,8 +215,9 @@ describe("PlayerService - seek functionality", () => {
 
       playerService.setVolume(80);
 
-      expect(standby.targetVolume).toBe(120);
-      expect(setVolumeSpy).toHaveBeenCalledWith(standby, 120);
+      expect(standby.volumeMultiplier).toBe(0.75);
+      expect(standby.targetVolume).toBe(60);
+      expect(setVolumeSpy).toHaveBeenCalledWith(standby, 60);
     });
 
     test("should update standby target volume when track multiplier changes", () => {
@@ -244,11 +245,43 @@ describe("PlayerService - seek functionality", () => {
 
       player.standbySession = standby;
 
+      playerService.setTrackVolumeMultiplier("track-2", 0.6);
+
+      expect(standby.volumeMultiplier).toBe(0.6);
+      expect(standby.targetVolume).toBe(42);
+      expect(setVolumeSpy).toHaveBeenCalledWith(standby, 42);
+    });
+
+    test("should clamp track multipliers so Dynamic Voice never boosts volume", () => {
+      const fakeProcess = {} as ChildProcess;
+      const standby = {
+        ...createSession(fakeProcess),
+        id: 2,
+        purpose: "standby" as const,
+        trackId: "track-2",
+      };
+      const setVolumeSpy = mock((_session: unknown, _volume: number) => true);
+      const player = playerService as unknown as {
+        standbySession: typeof standby | null;
+        setSessionVolume: (
+          session: typeof standby,
+          volume: number,
+        ) => boolean;
+      };
+
+      stubMethod(
+        player,
+        "setSessionVolume",
+        setVolumeSpy as unknown as typeof player.setSessionVolume,
+      );
+
+      player.standbySession = standby;
+
       playerService.setTrackVolumeMultiplier("track-2", 1.6);
 
-      expect(standby.volumeMultiplier).toBe(1.6);
-      expect(standby.targetVolume).toBe(112);
-      expect(setVolumeSpy).toHaveBeenCalledWith(standby, 112);
+      expect(standby.volumeMultiplier).toBe(1);
+      expect(standby.targetVolume).toBe(70);
+      expect(setVolumeSpy).toHaveBeenCalledWith(standby, 70);
     });
   });
 
@@ -551,7 +584,8 @@ describe("PlayerService - seek functionality", () => {
       expect(promoted).toBe(true);
       expect(player.activeSession).toBe(standby);
       expect(player.standbySession).toBeNull();
-      expect(standby.targetVolume).toBe(84);
+      expect(standby.volumeMultiplier).toBe(1);
+      expect(standby.targetVolume).toBe(70);
       expect(setPausedSpy).toHaveBeenCalledWith(standby, false);
       expect(setVolumeSpy).toHaveBeenCalledWith(standby, standby.targetVolume);
     });
@@ -604,7 +638,8 @@ describe("PlayerService - seek functionality", () => {
 
       expect(didStart).toBe(true);
       expect(player.activeSession).toBe(incoming);
-      expect(incoming.targetVolume).toBeCloseTo(92, 10);
+      expect(incoming.volumeMultiplier).toBe(1);
+      expect(incoming.targetVolume).toBeCloseTo(70, 10);
       expect(setPausedSpy).toHaveBeenCalledWith(incoming, false);
       expect(setVolumeSpy).toHaveBeenCalledWith(incoming, 0);
       expect(

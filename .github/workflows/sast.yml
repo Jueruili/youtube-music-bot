@@ -1,0 +1,75 @@
+name: 01 SAST - Semgrep OWASP Top 10
+
+on:
+  push:
+    branches: [main, codex/dev]
+  pull_request:
+    branches: [main, codex/dev]
+  workflow_dispatch:
+
+jobs:
+  sast:
+    name: SAST - Static Source Code Scan
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      # Step 1：下載 GitHub repository 的程式碼
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Step 2：安裝 Python
+      # Semgrep 可以透過 pip 安裝，因此這裡先準備 Python 環境
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Step 3：安裝 Semgrep
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      # Step 4：執行 Semgrep SAST 掃描
+      # p/owasp-top-ten：使用 OWASP Top 10 相關規則
+      # p/javascript：JavaScript 規則
+      # p/typescript：TypeScript 規則
+      # p/react：React 前端規則
+      # p/docker：Dockerfile 安全規則
+      # p/github-actions：GitHub Actions workflow 安全規則
+      # p/security-audit：通用安全模式
+      # p/secrets：硬編碼金鑰偵測
+      # p/insecure-transport：HTTP/HTTPS 安全問題
+      - name: Run Semgrep SAST scan
+        run: |
+          semgrep \
+            --config=p/owasp-top-ten \
+            --config=p/javascript \
+            --config=p/typescript \
+            --config=p/react \
+            --config=p/docker \
+            --config=p/github-actions \
+            --config=p/security-audit \
+            --config=p/secrets \
+            --config=p/insecure-transport \
+            --sarif \
+            --output=semgrep-report.sarif \
+            .
+
+      # Step 5：上傳 SARIF 到 GitHub Security tab
+      # 讓掃描結果直接顯示在 PR 和 Security → Code scanning alerts 頁面
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-report.sarif
+
+      # Step 6：上傳 SARIF 報告為 Artifact（備用下載，SARIF 為標準 JSON 格式）
+      - name: Upload SAST report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-semgrep-report
+          path: semgrep-report.sarif

@@ -85,7 +85,7 @@ describe("yt-dlp utilities", () => {
       "--no-playlist",
       "-g",
       "-f",
-      "bestaudio/best",
+      "bestaudio[format_id!$=-drc]/bestaudio/best",
       "--extractor-args",
       "youtube:player_client=web",
       "--cookies",
@@ -96,6 +96,16 @@ describe("yt-dlp utilities", () => {
       "extractor-args=[youtube:player_client=web]",
       `cookies=${cookiesPath}`,
     ]);
+  });
+
+  test("should prefer non-DRC audio formats while retaining bestaudio fallback", () => {
+    const args = getYtDlpCliArgs("https://example.com/watch?v=1");
+    const formatIndex = args.indexOf("-f");
+
+    expect(formatIndex).toBeGreaterThanOrEqual(0);
+    expect(args[formatIndex + 1]).toBe(
+      "bestaudio[format_id!$=-drc]/bestaudio/best",
+    );
   });
 
   test("should parse the last non-empty playable URL from yt-dlp output", () => {
