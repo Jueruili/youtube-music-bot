@@ -1,0 +1,62 @@
+name: 01 SAST - Semgrep OWASP Top 10
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sast:
+    name: SAST - Static Source Code Scan
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      # Step 1：下載 GitHub repository 的程式碼
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Step 2：安裝 Python
+      # Semgrep 可以透過 pip 安裝，因此這裡先準備 Python 環境
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Step 3：安裝 Semgrep
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      # Step 4：執行 Semgrep SAST 掃描
+      # p/owasp-top-ten：使用 OWASP Top 10 相關規則
+      # p/javascript：JavaScript 規則
+      # p/typescript：TypeScript 規則
+      # p/react：React 前端規則
+      # p/docker：Dockerfile 安全規則
+      # p/github-actions：GitHub Actions workflow 安全規則
+      #
+      # || true 的用途：
+      # 即使 Semgrep 發現問題，也先不要讓 workflow 直接失敗，
+      # 方便教材展示掃描結果。
+      - name: Run Semgrep SAST scan
+        run: |
+          semgrep \
+            --config=p/owasp-top-ten \
+            --config=p/javascript \
+            --config=p/typescript \
+            --config=p/react \
+            --config=p/docker \
+            --config=p/github-actions \
+            --json \
+            --output=semgrep-report.json \
+            .
+
+      # Step 5：上傳 Semgrep 掃描結果
+      # 之後可以在 GitHub Actions 的 Artifacts 下載 semgrep-report.json
+      - name: Upload SAST report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-semgrep-report
+          path: semgrep-report.json
+
