@@ -1,6 +1,10 @@
 name: 01 SAST - Semgrep OWASP Top 10
 
 on:
+  push:
+    branches: [main, codex/dev]
+  pull_request:
+    branches: [main, codex/dev]
   workflow_dispatch:
 
 jobs:
@@ -10,6 +14,7 @@ jobs:
 
     permissions:
       contents: read
+      security-events: write
 
     steps:
       # Step 1：下載 GitHub repository 的程式碼
@@ -34,10 +39,9 @@ jobs:
       # p/react：React 前端規則
       # p/docker：Dockerfile 安全規則
       # p/github-actions：GitHub Actions workflow 安全規則
-      #
-      # || true 的用途：
-      # 即使 Semgrep 發現問題，也先不要讓 workflow 直接失敗，
-      # 方便教材展示掃描結果。
+      # p/security-audit：通用安全模式
+      # p/secrets：硬編碼金鑰偵測
+      # p/insecure-transport：HTTP/HTTPS 安全問題
       - name: Run Semgrep SAST scan
         run: |
           semgrep \
@@ -47,16 +51,25 @@ jobs:
             --config=p/react \
             --config=p/docker \
             --config=p/github-actions \
-            --json \
-            --output=semgrep-report.json \
+            --config=p/security-audit \
+            --config=p/secrets \
+            --config=p/insecure-transport \
+            --sarif \
+            --output=semgrep-report.sarif \
             .
 
-      # Step 5：上傳 Semgrep 掃描結果
-      # 之後可以在 GitHub Actions 的 Artifacts 下載 semgrep-report.json
-      - name: Upload SAST report
+      # Step 5：上傳 SARIF 到 GitHub Security tab
+      # 讓掃描結果直接顯示在 PR 和 Security → Code scanning alerts 頁面
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-report.sarif
+
+      # Step 6：上傳 SARIF 報告為 Artifact（備用下載，SARIF 為標準 JSON 格式）
+      - name: Upload SAST report artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sast-semgrep-report
-          path: semgrep-report.json
-
+          path: semgrep-report.sarif
